@@ -5,7 +5,45 @@ const today = () => new Date().toISOString().slice(0,10);
 const uid = () => `id_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
 const MONTHLY_SECURITY = 3750, MONTHLY_OTHERS = 250, MONTHLY_TOTAL = 4000;
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const KEYS = { r:"lc-r3", t:"lc-t3", p:"lc-p3", c:"lc-c3", rem:"lc-rem3", tour:"lc-tour3" };
+
+// Levy rate history from the real spreadsheet records
+const RATE_HISTORY = [
+  { period:"2021",                 total:3500, security:3250, others:250 },
+  { period:"Mid-2022 – mid-2024",  total:4000, security:3625, others:375 },
+  { period:"Current (mid-2024 on)",total:4000, security:3750, others:250 },
+];
+const LEVY_HISTORY_NOTE = "Note: Levy was KES 3,500/month in 2021, increased to KES 4,000 in mid-2022";
+
+// Security provider + M-Pesa paybill
+const PROVIDER_KEY = "lc-provider6";
+const PAYBILL = "8002331";
+const SEED_PROVIDER = {
+  name:"Olosho Security",
+  contactPerson:"Masinde",
+  mobile:"0768110169",
+  hotline:"0786776634",
+  paybill:PAYBILL,
+  monthlyCharge:30000,
+  notes:"",
+};
+
+// WhatsApp deep link — strips a leading 0 (or 254) and prepends the Kenyan country code
+const waNumber = phone => `254${String(phone || "").replace(/\D/g, "").replace(/^0+/, "").replace(/^254/, "")}`;
+const waLink = (phone, message) => `https://wa.me/${waNumber(phone)}?text=${encodeURIComponent(message)}`;
+
+// ── Reminder copy ───────────────────────────────────────────────
+const REMINDER_TYPES = {
+  levy:    { label:"25th reminder",      subject:"Monthly levy due",   audience:"ALL residents" },
+  overdue: { label:"End-of-month reminder", subject:"Payment overdue", audience:"Residents with a balance > 0" },
+};
+const levyMessage = (name, month) =>
+  `Dear ${name}, this is a reminder that your monthly security levy of KES ${fmt(MONTHLY_TOTAL)} for ${month} is due by the 25th. Paybill: ${PAYBILL}. Thank you, Lemayian Court.`;
+const overdueMessage = (name, balance) =>
+  `Dear ${name}, your security levy account shows KES ${fmt(balance)} outstanding. Please settle by end of month. Paybill: ${PAYBILL}. Lemayian Court.`;
+const reminderMessage = (type, name, balance, month) =>
+  type === "levy" ? levyMessage(name, month) : overdueMessage(name, balance);
+
+const KEYS = { r:"lc-r6", t:"lc-t6", p:"lc-p6", c:"lc-c6", rem:"lc-rem6", tour:"lc-tour6" };
 const AUTH_KEY = "lc-auth-token";
 const REFRESH_KEY = "lc-refresh-token";
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000/api";
@@ -32,14 +70,14 @@ function ss(key, val) {
 }
 
 const SEED_RESIDENTS = [
-  {id:"r1",name:"Hon. Ndetei",unit:"A1",phone:""},
-  {id:"r2",name:"Esther Gicimu",unit:"A2",phone:""},
-  {id:"r3",name:"Njoroge",unit:"A3",phone:""},
-  {id:"r4",name:"Magomere",unit:"A4",phone:""},
-  {id:"r5",name:"Karanja",unit:"A5",phone:""},
-  {id:"r6",name:"Muriuki",unit:"A6",phone:""},
-  {id:"r7",name:"Mbindu",unit:"A7",phone:""},
-  {id:"r8",name:"Mwanthi",unit:"A8",phone:""},
+  {id:"r1",name:"Hon. Ndetei",unit:"A1",phone:"0722000001",notes:""},
+  {id:"r2",name:"Esther Gicimu",unit:"A2",phone:"0722000002",notes:""},
+  {id:"r3",name:"Njoroge",unit:"A3",phone:"0722000003",notes:""},
+  {id:"r4",name:"Magomere",unit:"A4",phone:"0722000004",notes:""},
+  {id:"r5",name:"Karanja",unit:"A5",phone:"0722000005",notes:"Chronic arrears since 2021 — escalate reminders"},
+  {id:"r6",name:"Muriuki",unit:"A6",phone:"0722000006",notes:"Pays in bulk — often in credit"},
+  {id:"r7",name:"Mbindu",unit:"A7",phone:"0722000007",notes:"Pays in bulk — often in credit"},
+  {id:"r8",name:"Mwanthi",unit:"A8",phone:"0722000008",notes:""},
 ];
 
 function buildSeedTxns() {
@@ -51,9 +89,9 @@ function buildSeedTxns() {
   ["2025-01-26","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r2",d)));
   [["2025-01-18",12000],["2025-03-01",4000],["2025-04-08",12000],["2025-07-30",12000],["2025-10-29",8000]].forEach(([d,a])=>T.push(py("r2",d,a)));
   ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r3",d)));
-  [["2025-01-28",8000],["2025-03-05",4000],["2025-03-30",8000],["2025-06-26",8000],["2025-10-29",16000]].forEach(([d,a])=>T.push(py("r3",d,a)));
+  [["2025-01-28",8000],["2025-03-05",4000],["2025-03-30",4000],["2025-06-26",8000],["2025-10-29",16000]].forEach(([d,a])=>T.push(py("r3",d,a)));
   ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r4",d)));
-  [["2025-01-28",8000],["2025-03-31",8000],["2025-04-24",8000],["2025-07-22",4000],["2025-10-29",16000]].forEach(([d,a])=>T.push(py("r4",d,a)));
+  [["2025-01-28",8000],["2025-03-31",8000],["2025-04-24",8000],["2025-07-22",8000],["2025-10-29",16000]].forEach(([d,a])=>T.push(py("r4",d,a)));
   T.push({id:`t${n++}`,residentId:"r5",date:"2025-01-01",type:"openingBalance",amount:12000,security:0,others:0,note:"Opening balance b/fwd"});
   ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r5",d)));
   [["2025-02-11",4000],["2025-04-14",4000],["2025-06-03",4000],["2025-07-13",4000],["2025-09-10",4000],["2025-11-17",4000],["2025-12-12",4000]].forEach(([d,a])=>T.push(py("r5",d,a)));
@@ -62,28 +100,72 @@ function buildSeedTxns() {
   ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r7",d)));
   [["2025-02-06",12000],["2025-04-24",12000],["2025-08-03",12000],["2025-10-29",12000]].forEach(([d,a])=>T.push(py("r7",d,a)));
   ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r8",d)));
-  [["2025-02-27",4000],["2025-03-28",4000],["2025-04-25",4000],["2025-05-14",4000],["2025-06-27",4000],["2025-08-03",4000],["2025-09-19",12000],["2025-10-29",4000],["2025-11-20",4000]].forEach(([d,a])=>T.push(py("r8",d,a)));
+  [["2025-02-27",4000],["2025-03-28",4000],["2025-04-25",4000],["2025-05-14",4000],["2025-06-27",4000],["2025-08-03",4000],["2025-09-19",16000],["2025-10-29",4000],["2025-11-20",4000]].forEach(([d,a])=>T.push(py("r8",d,a)));
   const r1Refs = ["QKJ3A1BX2R","QKL9M3PX7T","QKM2N4RY8U","QKN5P6SZ9V","QKP8Q7TA1W"];
   T.filter(t => t.residentId === "r1" && t.type === "payment").forEach((t,i) => { t.mpesa = r1Refs[i]; });
   const r2Refs = ["QKA1B2C3D4","QKE5F6G7H8","QKI9J0K1L2","QKM3N4O5P6","QKQ7R8S9T0"];
   T.filter(t => t.residentId === "r2" && t.type === "payment").forEach((t,i) => { t.mpesa = r2Refs[i]; });
+
+  // ── 2026 ledger (Excel serials converted to ISO dates) ──────────
+  // XL maps each spreadsheet serial to its date exactly as recorded in the 2026 sheet.
+  const XL = {
+    46023:"2026-01-01", 46047:"2026-01-25", 46048:"2026-01-26", 46054:"2026-02-01",
+    46078:"2026-02-25", 46094:"2026-03-13", 46106:"2026-03-25", 46107:"2026-03-26",
+    46118:"2026-04-06", 46132:"2026-04-20", 46136:"2026-04-24", 46137:"2026-04-25",
+    46152:"2026-05-10", 46167:"2026-05-25", 46186:"2026-06-13", 46198:"2026-06-25",
+    46216:"2026-07-14", 46228:"2026-07-26", 46229:"2026-07-27", 46235:"2026-08-02",
+    46239:"2026-08-06", 46240:"2026-08-07", 46242:"2026-08-09", 46245:"2026-08-12",
+    46247:"2026-08-14", 46252:"2026-08-19", 46254:"2026-08-21", 46255:"2026-08-22",
+    46259:"2026-08-26", 46266:"2026-09-02", 46268:"2026-09-04", 46283:"2026-09-19",
+    46290:"2026-09-26", 46295:"2026-10-01", 46302:"2026-10-08",
+  };
+  // Monthly levy charges Jan–Sep 2026 (October's levy is not yet due)
+  const CH26 = [46047,46078,46106,46137,46167,46198,46228,46259,46290].map(s => XL[s]);
+  ["r1","r2","r3","r4","r5","r6","r7","r8"].forEach(rid => CH26.forEach(d => T.push(ch(rid, d))));
+
+  // The 2025 closing balances carry forward automatically as the 2026 opening (b/fwd)
+  // positions — r1 KES 4,000 · r2 KES 0 · r3 KES 8,000 · r4 KES 0 · r5 KES 32,000 ·
+  // r6 KES 0 · r7 KES 0 · r8 KES 0 — so no extra opening rows are posted for 2026.
+
+  // 2026 payments — [serial, amount] per resident
+  const P26 = {
+    r1:[[46048,4000],[46094,8000],[46132,8000],[46152,8000],[46186,4000],[46235,8000]],
+    r2:[[46054,4000],[46107,4000],[46118,8000],[46136,4000],[46216,8000],[46239,4000],[46268,4000]],
+    r3:[[46118,8000],[46152,8000],[46240,8000],[46242,8000],[46283,8000],[46302,4000]],
+    r4:[[46048,4000],[46132,4000],[46186,4000],[46245,4000],[46247,4000],[46252,8000],[46266,4000]],
+    r5:[[46054,4000],[46094,4000],[46107,4000],[46136,4000],[46229,4000],[46254,4000],[46255,4000],[46295,4000],[46302,3000]],
+    r6:[[46132,16000],[46242,12000],[46254,16000]],
+    r7:[[46054,16000],[46152,16000],[46266,16000]],
+    r8:[[46107,4000],[46118,4000],[46186,4000],[46216,4000],[46239,4000],[46245,4000],[46268,4000],[46283,4000]],
+  };
+  Object.entries(P26).forEach(([rid, list]) => list.forEach(([s,a]) => T.push(py(rid, XL[s], a, "Payment"))));
+
   return T;
 }
 
 const SEED_PROJECTS = [
-  {id:"p1",name:"GateHouse – 1st Estimate",target:400000,notes:"Main gatehouse construction"},
-  {id:"p2",name:"GateHouse – Additional Works",target:80000,notes:"Extra works beyond initial estimate"},
+  {id:"p1",name:"GateHouse – 1st Estimate",target:400000,notes:"Main gatehouse construction — fully funded by 2024"},
+  {id:"p2",name:"GateHouse – Additional Works",target:56479,notes:"Actual overspend beyond the initial estimate"},
+  {id:"p3",name:"GateHouse – Outstanding Items",target:12000,notes:"Wiring & solar outstanding since 2021"},
 ];
 
 const SEED_CONTRIBS = [
-  {id:"c1",projectId:"p1",residentId:"r1",date:"2025-03-15",amount:50000,note:"Contribution"},
-  {id:"c2",projectId:"p1",residentId:"r2",date:"2025-03-15",amount:50000,note:"Contribution"},
-  {id:"c3",projectId:"p1",residentId:"r3",date:"2025-04-20",amount:50000,note:"Contribution"},
-  {id:"c4",projectId:"p1",residentId:"r4",date:"2025-05-10",amount:50000,note:"Contribution"},
-  {id:"c5",projectId:"p1",residentId:"r5",date:"2025-06-01",amount:50000,note:"Contribution"},
-  {id:"c6",projectId:"p1",residentId:"r6",date:"2025-07-15",amount:50000,note:"Contribution"},
-  {id:"c7",projectId:"p2",residentId:"r7",date:"2025-08-01",amount:10000,note:"Contribution"},
-  {id:"c8",projectId:"p2",residentId:"r8",date:"2025-09-01",amount:10000,note:"Contribution"},
+  {id:"c1",projectId:"p1",residentId:"r1",date:"2024-02-15",amount:50000,note:"Contribution"},
+  {id:"c2",projectId:"p1",residentId:"r2",date:"2024-03-15",amount:50000,note:"Contribution"},
+  {id:"c3",projectId:"p1",residentId:"r3",date:"2024-04-20",amount:50000,note:"Contribution"},
+  {id:"c4",projectId:"p1",residentId:"r4",date:"2024-05-10",amount:50000,note:"Contribution"},
+  {id:"c5",projectId:"p1",residentId:"r5",date:"2024-06-01",amount:50000,note:"Contribution"},
+  {id:"c6",projectId:"p1",residentId:"r6",date:"2024-07-15",amount:50000,note:"Contribution"},
+  {id:"c7",projectId:"p1",residentId:"r7",date:"2024-08-01",amount:50000,note:"Contribution"},
+  {id:"c8",projectId:"p1",residentId:"r8",date:"2024-09-01",amount:50000,note:"Contribution"},
+  {id:"c9",projectId:"p2",residentId:"r1",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c10",projectId:"p2",residentId:"r2",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c11",projectId:"p2",residentId:"r3",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c12",projectId:"p2",residentId:"r4",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c13",projectId:"p2",residentId:"r5",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c14",projectId:"p2",residentId:"r6",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c15",projectId:"p2",residentId:"r7",date:"2024-11-05",amount:7059,note:"Contribution"},
+  {id:"c16",projectId:"p2",residentId:"r8",date:"2024-11-05",amount:7106,note:"Contribution"},
 ];
 const SEED_REMINDERS = [
   {id:"rem1",residentId:"r5",date:"2025-03-10",method:"WhatsApp",note:"Sent reminder about February arrears",sentBy:"Estate Manager"},
@@ -183,6 +265,8 @@ function Ico({ n, sz=18 }) {
     edit:"M11 4H4a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2v-7|M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z",
     warn:"M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z|M12 9v4|M12 17h.01",
     bar:"M18 20V10|M12 20V4|M6 20v-6",
+    shield:"M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z|M9 12l2 2 4-4",
+    user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2|M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
   };
   return (
     <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -264,12 +348,12 @@ const BDG = ({c="#1a6b3a", bg="#eaf5ed", children}) => <span style={{background:
 
 // ── Tour ───────────────────────────────────────────────────────
 const TOUR = [
-  {page:"dashboard", emoji:"🏡", title:"Your Command Centre", body:"See total collections, outstanding balances, and arrears — all at a glance."},
+  {page:"dashboard", emoji:"🏡", title:"Your Command Centre", body:"See total collections, outstanding balances, provider coverage, and arrears — all at a glance."},
   {page:"residents", emoji:"👥", title:"Resident Statements", body:"Each resident has a live ledger showing every charge, payment, and running balance — exactly like your PDF but editable in real time."},
-  {page:"payments",  emoji:"💳", title:"Post Levies & Payments", body:"Post the monthly levy to all residents in one click, or record individual payments as they arrive."},
-  {page:"projects",  emoji:"🔨", title:"Special Projects", body:"Track funding targets for projects like the GateHouse — with a progress bar and contributions per resident."},
-  {page:"reminders", emoji:"🔔", title:"Arrears Reminder Log", body:"Record WhatsApp, call, SMS, email, letter, or visit follow-ups with residents in arrears."},
-  {page:"reports",   emoji:"📊", title:"Reports & Analytics", body:"Monthly bar charts, collection rates, and a full resident summary. Your year-end report is always ready."},
+  {page:"provider",  emoji:"🛡️", title:"Security Provider", body:"Keep Olosho Security's contacts, paybill, and monthly charge in one place — editable and saved to this device."},
+  {page:"reminders", emoji:"🔔", title:"Scheduled Reminders", body:"See this month's schedule, send bulk WhatsApp or SMS reminders, and keep an accountability trail for arrears follow-up."},
+  {page:"reports",   emoji:"📊", title:"Reports & Analytics", body:"Monthly bar charts, collection rates, levy history, and a full resident summary. Your year-end report is always ready."},
+  {page:"residentview", emoji:"👤", title:"Resident View", body:"Hand the screen to a resident: they pick their unit, see only their own statement, and pay by M-Pesa — read-only."},
   {page:"settings",  emoji:"⚙️", title:"Backup & Restore", body:"Download or restore complete estate records and reset to the presentation-ready demo state."},
 ];
 
@@ -320,7 +404,7 @@ function Receipt({ txn, res, onClose }) {
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════
-function Dashboard({ residents, transactions, setPage }) {
+function Dashboard({ residents, transactions, setPage, provider }) {
   const bals = residents.map(r => ({...r, bal: calcBal(r.id, transactions)}));
     const owed = bals.filter(r => r.bal > 0).reduce((s,r) => s + r.bal, 0);
   const cred = bals.filter(r => r.bal < 0).reduce((s,r) => s+Math.abs(r.bal), 0);
@@ -328,6 +412,11 @@ function Dashboard({ residents, transactions, setPage }) {
   const levied = transactions.filter(t => t.type!=="payment").reduce((s,t) => s+t.amount, 0);
   const rate = levied > 0 ? Math.round((paid/levied)*100) : 0;
   const overdue = bals.filter(r => r.bal > 0).sort((a,b) => b.bal-a.bal);
+  // Coverage — levy collected this month vs the security provider's monthly cost
+  const monthPre = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,"0")}`;
+  const collectedThisMonth = transactions.filter(t => t.type==="payment" && t.date.startsWith(monthPre)).reduce((s,t) => s+t.amount, 0);
+  const providerCost = provider.monthlyCharge || 0;
+  const coveragePct = providerCost > 0 ? Math.round((collectedThisMonth/providerCost)*100) : 0;
   const now = new Date();
   const last6 = Array.from({length:6}, (_,i) => {
     const d = new Date(now); d.setMonth(d.getMonth()-5+i);
@@ -351,6 +440,16 @@ function Dashboard({ residents, transactions, setPage }) {
             {c.s && <div style={{fontSize:"0.71rem",color:"#8a9e91",marginTop:"0.28rem"}}>{c.s}</div>}
           </div>
         ))}
+        <div style={{background:"#fff",borderRadius:12,padding:"1rem 1.15rem",border:"1px solid #e2ece4"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.45rem"}}>
+            <span style={{fontSize:"0.71rem",fontWeight:800,color:"#6b7f72",textTransform:"uppercase",letterSpacing:"0.055em"}}>Coverage</span>
+            <span style={{background:coveragePct>=100?"#eaf5ed":"#fef4e8",borderRadius:6,padding:"2px 7px",fontSize:"0.95rem"}}>{coveragePct>=100?"✓":"⚡"}</span>
+          </div>
+          <div style={{fontSize:"1.4rem",fontWeight:900,color:coveragePct>=100?"#1a6b3a":"#e67e22",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{coveragePct}%</div>
+          <div style={{fontSize:"0.71rem",color:"#8a9e91",marginTop:"0.28rem",lineHeight:1.5}}>
+            {residents.length} houses × KES {fmt(MONTHLY_TOTAL)} = KES {fmt(collectedThisMonth)} collected vs KES {fmt(providerCost)} provider cost
+          </div>
+        </div>
         <div style={{background:"#fff",borderRadius:12,padding:"1rem 1.15rem",border:"1px solid #e2ece4",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
           <div style={{fontSize:"0.71rem",fontWeight:800,color:"#6b7f72",textTransform:"uppercase",letterSpacing:"0.055em",marginBottom:"0.6rem",alignSelf:"flex-start"}}>Collection Rate</div>
           <svg width={72} height={72} viewBox="0 0 80 80">
@@ -359,6 +458,19 @@ function Dashboard({ residents, transactions, setPage }) {
             <text x="40" y="44" textAnchor="middle" fontSize="15" fontWeight="800" fill="#0f2417">{rate}%</text>
           </svg>
         </div>
+      </div>
+      <div style={{background:"#0d1f13",borderRadius:12,padding:"1.05rem 1.2rem",marginBottom:"0.85rem",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",gap:"1rem",flexWrap:"wrap"}}>
+        <div style={{...FL,gap:"0.7rem",minWidth:0}}>
+          <div style={{width:38,height:38,borderRadius:10,background:"rgba(106,170,122,0.2)",display:"flex",alignItems:"center",justifyContent:"center",color:"#7dca8c",flexShrink:0}}><Ico n="shield" sz={19}/></div>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:"0.66rem",color:"#6aaa7a",textTransform:"uppercase",fontWeight:800,letterSpacing:"0.07em",marginBottom:"0.15rem"}}>Security Provider</div>
+            <div style={{fontWeight:900,fontSize:"1rem",lineHeight:1.2}}>{provider.name || "—"}</div>
+            <div style={{fontSize:"0.75rem",color:"rgba(255,255,255,0.62)",marginTop:"0.15rem"}}>
+              📱 {provider.mobile || "—"} · Paybill {provider.paybill || "—"} · <b style={{color:"#7dca8c"}}>KES {fmt(provider.monthlyCharge)}/month</b>
+            </div>
+          </div>
+        </div>
+        <BTN v="sec" sz="sm" onClick={() => setPage("provider")}>Manage Provider →</BTN>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1.4fr 1fr",gap:"0.85rem",marginBottom:"1.1rem"}}>
         <div style={{background:"#fff",borderRadius:12,padding:"1.1rem 1.2rem",border:"1px solid #e2ece4"}}>
@@ -374,7 +486,7 @@ function Dashboard({ residents, transactions, setPage }) {
         </div>
         <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",overflow:"hidden"}}>
           <div style={{padding:"0.7rem 1rem",borderBottom:"1px solid #e2ece4",fontWeight:800,color:"#0f2417",fontSize:"0.84rem"}}>Quick Stats</div>
-          {[["Residents",residents.length,"#0f2417"],["In Arrears",overdue.length,"#c0392b"],["Settled",bals.filter(r=>r.bal<=0).length,"#1a6b3a"],["Monthly Levy",`KES ${fmt(MONTHLY_TOTAL)}`,"#0f2417"]].map(([k,v,c]) => (
+          {[["Residents",residents.length,"#0f2417"],["In Arrears",overdue.length,"#c0392b"],["Settled",bals.filter(r=>r.bal<=0).length,"#1a6b3a"],["Monthly Levy",`KES ${fmt(MONTHLY_TOTAL)}`,"#0f2417"],["Provider Cost",`KES ${fmt(provider.monthlyCharge)}`,"#0f2417"]].map(([k,v,c]) => (
             <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"0.52rem 1rem",borderBottom:"1px solid #eef3ef",fontSize:"0.82rem"}}>
               <span style={{color:"#6b7f72"}}>{k}</span><span style={{fontWeight:800,color:c}}>{v}</span>
             </div>
@@ -802,6 +914,18 @@ function Reports({ residents, transactions }) {
         <div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Reports</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Collection performance & financial summary</p></div>
         <div style={{...FL,gap:"0.55rem"}}><LBL c="Year"/><SEL value={yr} onChange={e=>setYr(e.target.value)} style={{width:"auto",padding:"0.42rem 0.72rem"}}>{yrs.map(y=><option key={y} value={y}>{y}</option>)}{!yrs.includes("2025")&&<option value="2025">2025</option>}</SEL><BTN v="sec" sz="sm" onClick={exportReport}>⇩ Export CSV</BTN><BTN v="gho" sz="sm" onClick={() => window.print()}>🖨 Print</BTN></div>
       </div>
+      <div style={{background:"#fff8ec",border:"1px solid #f5dcb3",borderRadius:10,padding:"0.7rem 0.95rem",marginBottom:"1.1rem",fontSize:"0.79rem",color:"#8a5a12",lineHeight:1.6}}>
+        <b>Levy rate history.</b> {LEVY_HISTORY_NOTE}
+        <div style={{marginTop:"0.45rem",display:"grid",gap:"0.2rem"}}>
+          {RATE_HISTORY.map(r => (
+            <div key={r.period} style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+              <span style={{fontWeight:800,minWidth:150}}>{r.period}</span>
+              <span style={{fontVariantNumeric:"tabular-nums"}}>KES {fmt(r.total)}/month</span>
+              <span style={{color:"#a8763a"}}>(Security KES {fmt(r.security)} + Others KES {fmt(r.others)})</span>
+            </div>
+          ))}
+        </div>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:"0.8rem",marginBottom:"1.1rem"}}>
         {[{l:"Total Levied",v:tCh,co:"#c0392b"},{l:"Total Collected",v:tPa,co:"#1a6b3a"},{l:"Shortfall",v:tCh-tPa,co:"#e67e22"},{l:"Rate",v:null,rate,co:rate>=90?"#1a6b3a":rate>=70?"#e67e22":"#c0392b"}].map(c=>(
           <div key={c.l} style={{background:"#fff",borderRadius:12,padding:"0.95rem 1.1rem",border:"1px solid #e2ece4"}}>
@@ -876,12 +1000,291 @@ function Reports({ residents, transactions }) {
 }
 
 // ══════════════════════════════════════════════════════════════
+// RESIDENT VIEW (read-only, for residents)
+// ══════════════════════════════════════════════════════════════
+function ResidentView({ residents, transactions, provider, onBack }) {
+  const [unit, setUnit] = useState("");
+  const [showPay, setShowPay] = useState(false);
+  const resident = residents.find(r => r.id === unit) || null;
+  const paybill = provider.paybill || PAYBILL;
+
+  if (!resident) return (
+    <div>
+      <div style={{...FL,justifyContent:"space-between",marginBottom:"1.5rem",flexWrap:"wrap",gap:"0.7rem"}}>
+        <div>
+          <h2 style={{margin:0,fontSize:"1.35rem",fontWeight:900,color:"#0f2417"}}>🏡 Lemayian Court</h2>
+          <p style={{margin:"0.25rem 0 0",color:"#6b7f72",fontSize:"0.86rem"}}>Resident portal — read-only statement</p>
+        </div>
+        <BTN v="gho" onClick={onBack}><Ico n="back" sz={14}/> Back to Admin</BTN>
+      </div>
+      <div style={{background:"#fff",borderRadius:14,border:"1px solid #e2ece4",padding:"2rem",maxWidth:480,margin:"0 auto"}}>
+        <div style={{fontSize:"2.5rem",textAlign:"center",marginBottom:"0.8rem"}}>👤</div>
+        <h3 style={{margin:"0 0 1.2rem",fontSize:"1.05rem",fontWeight:900,color:"#0f2417",textAlign:"center"}}>Select your unit</h3>
+        <FLD label="Your unit"><SEL value={unit} onChange={e => setUnit(e.target.value)}>
+          <option value="">-- Select your unit --</option>
+          {residents.map(r => <option key={r.id} value={r.id}>{r.name} · Unit {r.unit}</option>)}
+        </SEL></FLD>
+        <div style={{background:"#f4f8f5",borderRadius:9,padding:"0.8rem 0.9rem",fontSize:"0.8rem",color:"#4a6352",lineHeight:1.6}}>
+          <b>Need to pay?</b> Use M-Pesa Paybill <b>{paybill}</b> and enter your unit number as the account.
+        </div>
+      </div>
+    </div>
+  );
+
+  const myT = [...transactions].filter(t => t.residentId === resident.id).sort((a,b) => a.date.localeCompare(b.date));
+  let run = 0;
+  const rows = myT.map(t => { if (t.type === "payment") run -= t.amount; else run += t.amount; return {...t, run}; });
+  const bal = run;
+
+  return (
+    <div>
+      <div style={{...FL,justifyContent:"space-between",marginBottom:"1.3rem",flexWrap:"wrap",gap:"0.7rem"}}>
+        <div>
+          <h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>🏡 Lemayian Court</h2>
+          <p style={{margin:"0.22rem 0 0",color:"#6b7f72",fontSize:"0.83rem"}}>Resident portal · {resident.name} · Unit {resident.unit}</p>
+        </div>
+        <div style={{...FL,gap:"0.5rem",flexWrap:"wrap"}}>
+          <BTN v="gho" sz="sm" onClick={() => setUnit("")}>Change unit</BTN>
+          <BTN v="gho" onClick={onBack}><Ico n="back" sz={14}/> Back to Admin</BTN>
+        </div>
+      </div>
+
+      <div style={{background:"#fff",borderRadius:14,border:"1px solid #e2ece4",padding:"1.35rem 1.5rem",marginBottom:"1rem",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"1rem"}}>
+        <div>
+          <div style={{fontSize:"0.72rem",color:"#6b7f72",textTransform:"uppercase",fontWeight:800,letterSpacing:"0.055em",marginBottom:"0.35rem"}}>Your balance</div>
+          <div style={{fontWeight:900,fontSize:"1.75rem",fontVariantNumeric:"tabular-nums",color:bal>0?"#c0392b":bal<0?"#2471a3":"#1a6b3a"}}>
+            {bal>0?`KES ${fmt(bal)} owed`:bal<0?`KES ${fmt(Math.abs(bal))} credit`:"✓ Fully settled"}
+          </div>
+          <div style={{fontSize:"0.78rem",color:"#8a9e91",marginTop:"0.25rem"}}>{bal>0?"Please settle by end of month.":bal<0?"You have a credit on your account.":"Nothing outstanding — thank you!"}</div>
+        </div>
+        <BTN sz="lg" onClick={() => setShowPay(true)}><Ico n="card" sz={16}/> Pay Now</BTN>
+      </div>
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",overflow:"hidden",marginBottom:"1rem"}}>
+        <div style={{padding:"0.8rem 1.1rem",borderBottom:"1px solid #e2ece4",fontWeight:800,color:"#0f2417",fontSize:"0.88rem"}}>Your Statement</div>
+        <div style={{overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem",minWidth:460}}>
+            <thead><tr style={{background:"#f4f8f5"}}>{["Date","Description","Charge","Payment","Balance"].map((h,i)=><th key={h} style={{padding:"0.55rem 0.9rem",textAlign:i>=2?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+            <tbody>
+              {rows.length===0 && <tr><td colSpan={5} style={{textAlign:"center",padding:"2.5rem",color:"#8a9e91",fontStyle:"italic"}}>No transactions yet</td></tr>}
+              {[...rows].reverse().map(t => (
+                <tr key={t.id} style={{borderBottom:"1px solid #eef3ef"}}>
+                  <td style={{padding:"0.5rem 0.9rem",color:"#4a6352",whiteSpace:"nowrap"}}>{t.date}</td>
+                  <td style={{padding:"0.5rem 0.9rem",color:"#0f2417"}}>{t.note}</td>
+                  <td style={{padding:"0.5rem 0.9rem",textAlign:"right",color:"#c0392b",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type!=="payment"?`KES ${fmt(t.amount)}`:""}</td>
+                  <td style={{padding:"0.5rem 0.9rem",textAlign:"right",color:"#1a6b3a",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="payment"?`KES ${fmt(t.amount)}`:""}</td>
+                  <td style={{padding:"0.5rem 0.9rem",textAlign:"right",fontWeight:800,fontVariantNumeric:"tabular-nums",color:t.run>0?"#c0392b":t.run<0?"#2471a3":"#1a6b3a"}}>KES {fmt(Math.abs(t.run))}{t.run<0?" Cr":""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",padding:"1.15rem 1.25rem"}}>
+        <h3 style={{margin:"0 0 0.85rem",fontSize:"0.9rem",fontWeight:800,color:"#0f2417"}}>Estate contacts</h3>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:"0.65rem"}}>
+          {[["Security Provider",provider.name,"S"],["Contact Person",provider.contactPerson,"C"],["Provider Mobile",provider.mobile,"M"],["Hotline",provider.hotline,"H"],["M-Pesa Paybill",provider.paybill,"P"]].map(([k,v,em]) => (
+            <div key={k} style={{background:"#f4f8f5",borderRadius:9,padding:"0.7rem 0.85rem"}}>
+              <div style={{fontSize:"0.67rem",color:"#6b7f72",textTransform:"uppercase",fontWeight:800,letterSpacing:"0.05em",marginBottom:"0.2rem"}}>{k}</div>
+              <div style={{fontWeight:800,fontSize:"0.9rem",color:"#0f2417",fontVariantNumeric:"tabular-nums"}}>{v || "—"}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:"0.74rem",color:"#8a9e91",marginTop:"0.8rem",lineHeight:1.6}}>
+          Monthly levy: KES {fmt(MONTHLY_TOTAL)} (Security KES {fmt(MONTHLY_SECURITY)} + Others KES {fmt(MONTHLY_OTHERS)}), due by the 25th.
+        </div>
+      </div>
+
+      {showPay && <Modal title="Pay by M-Pesa" onClose={() => setShowPay(false)} w={440}>
+        <div style={{textAlign:"center",marginBottom:"1.1rem"}}>
+          <div style={{fontSize:"2.4rem",marginBottom:"0.4rem"}}>M-PESA</div>
+          <div style={{fontSize:"0.8rem",color:"#6b7f72"}}>Paybill Number</div>
+          <div style={{fontSize:"2.1rem",fontWeight:900,color:"#1a6b3a",fontVariantNumeric:"tabular-nums",letterSpacing:"0.04em"}}>{paybill}</div>
+          <div style={{fontSize:"0.78rem",color:"#6b7f72",marginTop:"0.2rem"}}>Account number: <b>{resident.unit}</b></div>
+        </div>
+        <div style={{background:"#eaf5ed",borderRadius:10,padding:"0.95rem 1.05rem",marginBottom:"1rem"}}>
+          <div style={{fontWeight:900,color:"#1a6b3a",fontSize:"0.85rem",marginBottom:"0.55rem"}}>How to pay</div>
+          <ol style={{margin:0,paddingLeft:"1.15rem",color:"#0f2417",fontSize:"0.83rem",lineHeight:1.85}}>
+            <li>Go to <b>M-Pesa</b> then <b>Lipa na M-Pesa</b> then <b>Pay Bill</b></li>
+            <li>Enter Business Number <b>{paybill}</b></li>
+            <li>Enter Account Number <b>{resident.unit}</b> (your unit)</li>
+            <li>Enter the amount and your M-Pesa PIN</li>
+            <li>Keep the confirmation SMS for your records</li>
+          </ol>
+        </div>
+        <div style={{background:"#f4f8f5",borderRadius:9,padding:"0.7rem 0.85rem",fontSize:"0.82rem",color:"#4a6352",marginBottom:"1rem",lineHeight:1.6}}>
+          {bal>0?<>Amount due now: <b style={{color:"#c0392b"}}>KES {fmt(bal)}</b></>:bal<0?<>You have a credit of <b style={{color:"#2471a3"}}>KES {fmt(Math.abs(bal))}</b> — the next KES {fmt(MONTHLY_TOTAL)} levy is already partly covered.</>:<>Monthly levy: <b>KES {fmt(MONTHLY_TOTAL)}</b></>}
+        </div>
+        <BTN onClick={() => setShowPay(false)} style={{width:"100%",justifyContent:"center"}}>Done</BTN>
+      </Modal>}
+    </div>
+  );
+}
+
+
+// ══════════════════════════════════════════════════════════════
+// PROVIDER
+// ══════════════════════════════════════════════════════════════
+function Provider({ provider, setProvider, toast }) {
+  const [fm, setFm] = useState(provider);
+  useEffect(() => setFm(provider), [provider]);
+  const [waState, setWaState] = useState({});
+  const fields = [
+    {k:"name",          l:"Provider Name"},
+    {k:"contactPerson", l:"Contact Person"},
+    {k:"mobile",        l:"Mobile"},
+    {k:"hotline",       l:"Hotline"},
+    {k:"paybill",       l:"M-Pesa Paybill"},
+  ];
+  const save = () => {
+    setProvider({ ...fm, monthlyCharge: parseFloat(fm.monthlyCharge) || 0, paybill: String(fm.paybill || "").trim() });
+    toast("Provider details saved");
+  };
+  const dirty = JSON.stringify(fm) !== JSON.stringify(provider);
+  return (
+    <div>
+      <div style={{...FL,justifyContent:"space-between",marginBottom:"1.35rem",flexWrap:"wrap",gap:"0.7rem"}}>
+        <div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Security Provider</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Contracted security firm and payment details</p></div>
+        <div style={{...FL,gap:"0.5rem"}}>
+          {dirty && <BTN v="sec" sz="sm" onClick={() => setFm(provider)}>Discard</BTN>}
+          <BTN onClick={save} disabled={!dirty}><Ico n="check" sz={14}/> Save Changes</BTN>
+        </div>
+      </div>
+
+      <div style={{background:"#0d1f13",borderRadius:12,padding:"1.25rem 1.35rem",marginBottom:"1rem",color:"#fff"}}>
+        <div style={{...FL,gap:"0.7rem",marginBottom:"0.85rem"}}>
+          <div style={{width:38,height:38,borderRadius:10,background:"rgba(106,170,122,0.2)",display:"flex",alignItems:"center",justifyContent:"center",color:"#7dca8c",flexShrink:0}}><Ico n="shield" sz={19}/></div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:900,fontSize:"1.02rem"}}>{provider.name || "—"}</div>
+            <div style={{fontSize:"0.74rem",color:"#6aaa7a"}}>Security provider · Contact: {provider.contactPerson || "—"}</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:"0.66rem",color:"#6aaa7a",textTransform:"uppercase",fontWeight:800,letterSpacing:"0.06em"}}>Monthly Charge</div>
+            <div style={{fontWeight:900,fontSize:"1.05rem",fontVariantNumeric:"tabular-nums"}}>KES {fmt(provider.monthlyCharge)}</div>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:"0.6rem"}}>
+          {[["Mobile",provider.mobile],["Hotline",provider.hotline],["M-Pesa Paybill",provider.paybill]].map(([k,v]) => (
+            <div key={k} style={{background:"rgba(255,255,255,0.06)",borderRadius:9,padding:"0.6rem 0.8rem"}}>
+              <div style={{fontSize:"0.65rem",color:"#6aaa7a",textTransform:"uppercase",fontWeight:800,letterSpacing:"0.05em",marginBottom:"0.2rem"}}>{k}</div>
+              <div style={{fontWeight:800,fontSize:"0.88rem",fontVariantNumeric:"tabular-nums"}}>{v || "—"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",padding:"1.25rem"}}>
+        <h3 style={{margin:"0 0 1rem",fontSize:"0.95rem",color:"#0f2417"}}>Provider details</h3>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:"0 0.85rem"}}>
+          {fields.map(f => <FLD key={f.k} label={f.l}><INP value={fm[f.k] || ""} onChange={e => setFm(p => ({...p,[f.k]:e.target.value}))}/></FLD>)}
+          <FLD label="Monthly Charge (KES)"><INP type="number" value={fm.monthlyCharge} onChange={e => setFm(p => ({...p,monthlyCharge:e.target.value}))}/></FLD>
+        </div>
+        <FLD label="Notes"><TXA rows={4} value={fm.notes || ""} onChange={e => setFm(p => ({...p,notes:e.target.value}))} placeholder="Contract terms, renewal dates, guard shifts, incidents…"/></FLD>
+        <div style={{...FL,gap:"0.55rem",flexWrap:"wrap"}}>
+          <BTN v="sec" sz="sm" onClick={() => { setWaState("msg"); }}>
+            <Ico n="warn" sz={13}/> Quick message to {provider.contactPerson || "contact"}
+          </BTN>
+        </div>
+      </div>
+
+      {waState === "msg" && <Modal title={`Message ${provider.contactPerson || provider.name}`} onClose={() => setWaState("")} w={440}>
+        <p style={{margin:"0 0 0.85rem",color:"#4a6352",fontSize:"0.85rem",lineHeight:1.6}}>
+          Opens WhatsApp with the provider's contact person on <b>{provider.mobile || "—"}</b>.
+        </p>
+        <div style={{background:"#f4f8f5",borderRadius:9,padding:"0.8rem 0.9rem",fontSize:"0.83rem",color:"#0f2417",lineHeight:1.6,marginBottom:"1rem"}}>
+          Dear {provider.contactPerson || "team"}, this is the Lemayian Court estate committee regarding {provider.name || "the security contract"}.
+        </div>
+        <div style={{...FL,justifyContent:"flex-end",gap:"0.6rem"}}>
+          <BTN v="sec" onClick={() => setWaState("")}>Cancel</BTN>
+          <BTN onClick={() => { window.open(waLink(provider.mobile, `Dear ${provider.contactPerson || "team"}, this is the Lemayian Court estate committee regarding ${provider.name || "the security contract"}.`), "_blank", "noopener"); setWaState(""); }}>
+            💬 Open WhatsApp
+          </BTN>
+        </div>
+      </Modal>}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // SETTINGS
 // ══════════════════════════════════════════════════════════════
+// ── Reminder schedule helpers ──────────────────────────────────
+function nextDateOn(day, from = new Date()) {
+  const d = new Date(from.getFullYear(), from.getMonth(), day);
+  const now = new Date();
+  if (d < new Date(now.getFullYear(), now.getMonth(), now.getDate())) d.setMonth(d.getMonth() + 1);
+  return d;
+}
+const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const daysUntil = iso => Math.max(0, Math.round((new Date(`${iso}T00:00:00`) - new Date(new Date().toDateString())) / 86400000));
+function dayLabel(iso) {
+  const n = new Date(`${iso}T00:00:00`).getDate();
+  const s = (n % 10 === 1 && n !== 11) ? "st" : (n % 10 === 2 && n !== 12) ? "nd" : (n % 10 === 3 && n !== 13) ? "rd" : "th";
+  return `${n}${s} ${MONTHS[new Date(`${iso}T00:00:00`).getMonth()]}`;
+}
+const endOfMonthISO = () => isoOf(nextDateOn(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()));
+
 function Reminders({ residents, reminders, setReminders, transactions, toast }) {
   const [add, setAdd] = useState(false);
+  const [bulk, setBulk] = useState(false);
+  const [sentLog, setSentLog] = useState({});
   const [fm, setFm] = useState({residentId:"",date:today(),method:"WhatsApp",note:"",sentBy:"Estate Manager"});
+  const [bFm, setBFm] = useState({type:"levy",date:today(),method:"WhatsApp"});
   const {confirm, dialog} = useConfirm();
+
+  const bals = residents.map(r => ({...r, bal: calcBal(r.id, transactions)}));
+  const debtors = bals.filter(r => r.bal > 0);
+  const now = new Date();
+  const thisMonth = MONTHS[now.getMonth()];
+  const levyISO = isoOf(nextDateOn(25));
+  const eomISO = endOfMonthISO();
+  const nextUp = levyISO <= eomISO ? {type:"levy", iso:levyISO} : {type:"overdue", iso:eomISO};
+  const scheduleISO = type => type === "levy" ? levyISO : eomISO;
+  const scheduleKey = type => `${type}-${scheduleISO(type).slice(0,7)}`;
+  const away = daysUntil(nextUp.iso);
+
+  const markSent = async type => {
+    const targets = type === "levy" ? residents : debtors;
+    if (!targets.length) { toast("No residents to remind","error"); return; }
+    if (!await confirm(`Mark the ${REMINDER_TYPES[type].label} as sent to ${targets.length} resident${targets.length!==1?"s":""}?\n\nThis logs one entry per resident in the reminder log.`)) return;
+    setReminders(p => [...p, ...targets.map(r => ({id:uid(), residentId:r.id, date:today(), method:"WhatsApp", sentBy:"Estate Manager", kind:type, note: reminderMessage(type, r.name, r.bal, thisMonth)}))]);
+    setSentLog(p => ({...p, [scheduleKey(type)]:today()}));
+    toast(`${REMINDER_TYPES[type].label} logged for ${targets.length} resident${targets.length!==1?"s":""}`);
+  };
+
+  const sendBulk = async () => {
+    const targets = bFm.type === "levy" ? residents : debtors;
+    if (!targets.length) { toast("No residents match this reminder","error"); return; }
+    if (!await confirm(`Send the ${REMINDER_TYPES[bFm.type].label} to ${targets.length} resident${targets.length!==1?"s":""} by ${bFm.method}?\n\nOne reminder log entry will be created per resident.`)) return;
+    const month = MONTHS[new Date(`${bFm.date}T00:00:00`).getMonth()];
+    setReminders(p => [...p, ...targets.map(r => ({id:uid(), residentId:r.id, date:bFm.date, method:bFm.method, sentBy:"Estate Manager", kind:bFm.type, note: reminderMessage(bFm.type, r.name, r.bal, month)}))]);
+    toast(`Bulk reminder logged for ${targets.length} resident${targets.length!==1?"s":""}`);
+    setBulk(false);
+  };
+
+  const schedCard = type => {
+    const t = REMINDER_TYPES[type];
+    const targets = type === "levy" ? residents : debtors;
+    const sent = sentLog[scheduleKey(type)];
+    return (
+      <div key={type} style={{background:"#fff",border:`1px solid ${type==="levy"?"#e2ece4":"#f5c5c2"}`,borderRadius:12,padding:"1rem 1.15rem"}}>
+        <div style={{...FL,justifyContent:"space-between",gap:"0.6rem",marginBottom:"0.55rem",flexWrap:"wrap"}}>
+          <div style={{...FL,gap:"0.5rem"}}>
+            <div style={{width:32,height:32,borderRadius:9,background:type==="levy"?"#eaf5ed":"#fff1f0",color:type==="levy"?"#1a6b3a":"#c0392b",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ico n={type==="levy"?"warn":"x"} sz={16}/></div>
+            <div>
+              <div style={{fontWeight:900,color:"#0f2417",fontSize:"0.9rem"}}>{dayLabel(scheduleISO(type))} — {t.subject}</div>
+              <div style={{fontSize:"0.73rem",color:"#6b7f72"}}>{t.label} · sent to {t.audience}</div>
+            </div>
+          </div>
+          {sent ? <BDG c="#1a6b3a" bg="#eaf5ed">✓ Sent {sent}</BDG> : <BTN sz="sm" onClick={() => markSent(type)}>Mark as Sent</BTN>}
+        </div>
+        <div style={{fontSize:"0.76rem",color:"#4a6352",background:"#f4f8f5",borderRadius:8,padding:"0.55rem 0.75rem",lineHeight:1.55}}>
+          <b>{targets.length}</b> recipient{targets.length!==1?"s":""} · {type === "levy" ? `KES ${fmt(MONTHLY_TOTAL)} due by the 25th` : `${debtors.length} with a balance`}
+        </div>
+      </div>
+    );
+  };
+
   const save = () => {
     if (!fm.residentId) { toast("Select a resident","error"); return; }
     if (!fm.note.trim()) { toast("Add a reminder note","error"); return; }
@@ -891,15 +1294,73 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
   const remove = async id => { if (!await confirm("Delete this reminder?\n\nThis cannot be undone.")) return; setReminders(p => p.filter(item => item.id !== id)); toast("Reminder deleted","warn"); };
   const sorted = [...reminders].sort((a,b) => b.date.localeCompare(a.date));
   return <div>
-    <div style={{...FL,justifyContent:"space-between",marginBottom:"1.35rem",flexWrap:"wrap",gap:"0.7rem"}}><div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Reminder Log</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Keep an accountability trail for arrears follow-up</p></div><BTN onClick={() => setAdd(true)}>🔔 Log Reminder</BTN></div>
-    <div style={{display:"grid",gap:"0.65rem"}}>{sorted.map(item => { const resident=residents.find(r => r.id===item.residentId); return <div key={item.id} style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,padding:"0.95rem 1.2rem",...FL,gap:"0.9rem"}}><div style={{fontSize:"1.25rem"}}>{item.method==="Call"?"📞":item.method==="SMS"?"📱":item.method==="Email"?"📧":"💬"}</div><div style={{flex:1}}><div style={{fontWeight:800,color:"#0f2417"}}>{resident?.name || "Unknown resident"} <BDG>{item.method}</BDG> <span style={{fontSize:"0.75rem",color:"#8a9e91",fontWeight:400}}>{item.date}</span></div><div style={{fontSize:"0.82rem",color:"#4a6352",marginTop:2}}>{item.note}</div><div style={{fontSize:"0.72rem",color:"#8a9e91",marginTop:2}}>Sent by: {item.sentBy}</div></div><BTN v="dan" sz="sm" onClick={() => remove(item.id)}><Ico n="trash" sz={12}/></BTN></div>; })}</div>
+    <div style={{...FL,justifyContent:"space-between",marginBottom:"1.35rem",flexWrap:"wrap",gap:"0.7rem"}}>
+      <div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Reminders</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Scheduled levy reminders and arrears follow-up trail</p></div>
+      <div style={{...FL,gap:"0.5rem",flexWrap:"wrap"}}>
+        <BTN v="sec" onClick={() => setAdd(true)}>🔔 Log Reminder</BTN>
+        <BTN onClick={() => setBulk(true)}>📣 Send Bulk Reminder</BTN>
+      </div>
+    </div>
+
+    <div style={{background:"#0d1f13",borderRadius:12,padding:"0.9rem 1.15rem",marginBottom:"1rem",color:"#fff",...FL,justifyContent:"space-between",flexWrap:"wrap",gap:"0.6rem"}}>
+      <div style={{...FL,gap:"0.6rem"}}>
+        <span style={{fontSize:"1.1rem"}}>⏰</span>
+        <div>
+          <div style={{fontWeight:900,fontSize:"0.88rem"}}>Next reminder: {dayLabel(nextUp.iso)}</div>
+          <div style={{fontSize:"0.72rem",color:"#6aaa7a"}}>{REMINDER_TYPES[nextUp.type].subject} · {REMINDER_TYPES[nextUp.type].audience}</div>
+        </div>
+      </div>
+      <BDG c="#7dca8c" bg="rgba(106,170,122,0.18)">{away} day{away!==1?"s":""} away</BDG>
+    </div>
+
+    <h3 style={{margin:"0 0 0.7rem",fontSize:"0.88rem",fontWeight:800,color:"#0f2417"}}>This Month's Schedule — {thisMonth}</h3>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:"0.8rem",marginBottom:"1.35rem"}}>
+      {["levy","overdue"].map(schedCard)}
+    </div>
+
+    <h3 style={{margin:"0 0 0.7rem",fontSize:"0.88rem",fontWeight:800,color:"#0f2417"}}>Residents — Payment Status</h3>
+    <div style={{display:"grid",gap:"0.65rem",marginBottom:"1.35rem"}}>
+      {bals.map(r => (
+        <div key={r.id} style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,padding:"0.85rem 1.15rem",...FL,gap:"0.9rem",flexWrap:"wrap"}}>
+          <div style={{width:36,height:36,borderRadius:"50%",background:`hsl(${(r.name.charCodeAt(0)*17)%360},42%,87%)`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"#0f2417",flexShrink:0}}>{r.name[0].toUpperCase()}</div>
+          <div style={{flex:1,minWidth:150}}>
+            <div style={{fontWeight:800,color:"#0f2417",fontSize:"0.88rem"}}>{r.name} <span style={{color:"#8a9e91",fontWeight:400,fontSize:"0.75rem"}}>· {r.unit}</span></div>
+            <div style={{fontSize:"0.75rem",color:"#6b7f72"}}>{r.phone || "No phone on file"}</div>
+          </div>
+          <div>{r.bal>0?<BDG c="#c0392b" bg="#fff1f0">KES {fmt(r.bal)} owed</BDG>:r.bal<0?<BDG c="#2471a3" bg="#eaf3fb">KES {fmt(Math.abs(r.bal))} credit</BDG>:<BDG c="#1a6b3a" bg="#eaf5ed">✓ Settled</BDG>}</div>
+          <BTN v="gho" sz="sm" onClick={() => window.open(waLink(r.phone, reminderMessage("levy", r.name, r.bal, thisMonth)), "_blank", "noopener")} disabled={!r.phone}>💬 WhatsApp</BTN>
+        </div>
+      ))}
+    </div>
+
+    <h3 style={{margin:"0 0 0.7rem",fontSize:"0.88rem",fontWeight:800,color:"#0f2417"}}>Reminder Log</h3>
+    <div style={{display:"grid",gap:"0.65rem"}}>{sorted.map(item => { const resident=residents.find(r => r.id===item.residentId); return <div key={item.id} style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,padding:"0.85rem 1.15rem",...FL,gap:"0.85rem",flexWrap:"wrap"}}><div style={{fontSize:"1.15rem"}}>{item.method==="Call"?"📞":item.method==="SMS"?"📱":item.method==="Email"?"📧":"💬"}</div><div style={{flex:1,minWidth:180}}><div style={{fontWeight:800,color:"#0f2417",fontSize:"0.85rem"}}>{resident?.name || "Unknown resident"} <BDG>{item.method}</BDG> {item.kind && <BDG c="#2471a3" bg="#eaf3fb">{REMINDER_TYPES[item.kind]?.label || item.kind}</BDG>} <span style={{fontSize:"0.73rem",color:"#8a9e91",fontWeight:400}}>{item.date}</span></div><div style={{fontSize:"0.8rem",color:"#4a6352",marginTop:2}}>{item.note}</div><div style={{fontSize:"0.71rem",color:"#8a9e91",marginTop:2}}>Sent by: {item.sentBy}</div></div><BTN v="dan" sz="sm" onClick={() => remove(item.id)}><Ico n="trash" sz={12}/></BTN></div>; })}</div>
     {sorted.length===0 && <div style={{textAlign:"center",padding:"3rem",color:"#8a9e91",background:"#fff",borderRadius:12,border:"1px solid #e2ece4"}}>No reminders logged yet.</div>}
     {add && <Modal title="Log Reminder" onClose={() => setAdd(false)}><FLD label="Resident"><SEL value={fm.residentId} onChange={e=>setFm(p=>({...p,residentId:e.target.value}))}><option value="">-- Select resident --</option>{residents.map(r=><option key={r.id} value={r.id}>{r.name} ({r.unit})</option>)}</SEL></FLD><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}><FLD label="Date"><INP type="date" value={fm.date} onChange={e=>setFm(p=>({...p,date:e.target.value}))}/></FLD><FLD label="Method"><SEL value={fm.method} onChange={e=>setFm(p=>({...p,method:e.target.value}))}>{["WhatsApp","Call","SMS","Email","Letter","Visit"].map(method=><option key={method}>{method}</option>)}</SEL></FLD></div><FLD label="Note"><TXA value={fm.note} onChange={e=>setFm(p=>({...p,note:e.target.value}))} placeholder="What was communicated?" rows={3}/></FLD><FLD label="Sent by"><INP value={fm.sentBy} onChange={e=>setFm(p=>({...p,sentBy:e.target.value}))}/></FLD><div style={{...FL,justifyContent:"flex-end",gap:"0.65rem"}}><BTN v="sec" onClick={() => setAdd(false)}>Cancel</BTN><BTN onClick={save}>Log Reminder</BTN></div></Modal>}
+    {bulk && <Modal title="Send Bulk Reminder" onClose={() => setBulk(false)} w={520}>
+      <FLD label="Reminder type"><SEL value={bFm.type} onChange={e=>setBFm(p=>({...p,type:e.target.value}))}>
+        <option value="levy">25th reminder — Monthly levy due (ALL residents)</option>
+        <option value="overdue">End-of-month reminder — Payment overdue (balance &gt; 0)</option>
+      </SEL></FLD>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}>
+        <FLD label="Date"><INP type="date" value={bFm.date} onChange={e=>setBFm(p=>({...p,date:e.target.value}))}/></FLD>
+        <FLD label="Method"><SEL value={bFm.method} onChange={e=>setBFm(p=>({...p,method:e.target.value}))}>{["WhatsApp","SMS","Call"].map(m=><option key={m}>{m}</option>)}</SEL></FLD>
+      </div>
+      <FLD label="Message preview">
+        <div style={{background:"#f4f8f5",borderRadius:9,padding:"0.8rem 0.9rem",fontSize:"0.82rem",color:"#0f2417",lineHeight:1.65,maxHeight:150,overflow:"auto"}}>
+          {reminderMessage(bFm.type, residents[0]?.name || "[Name]", Math.max(debtors[0]?.bal || 0, MONTHLY_TOTAL), MONTHS[new Date(`${bFm.date}T00:00:00`).getMonth()])}
+        </div>
+      </FLD>
+      <div style={{background:"#eaf5ed",borderRadius:9,padding:"0.65rem 0.9rem",fontSize:"0.82rem",fontWeight:800,color:"#1a6b3a",marginBottom:"1rem"}}>
+        Will log {(bFm.type === "levy" ? residents : debtors).length} reminder{(bFm.type === "levy" ? residents : debtors).length!==1?"s":""} — one per resident
+      </div>
+      <div style={{...FL,justifyContent:"flex-end",gap:"0.65rem"}}><BTN v="sec" onClick={() => setBulk(false)}>Cancel</BTN><BTN onClick={sendBulk}><Ico n="check" sz={13}/> Confirm &amp; Log</BTN></div>
+    </Modal>}
     {dialog}
   </div>;
 }
 
-function Settings({ residents, setResidents, transactions, setTransactions, projects, setProjects, contribs, setContribs, reminders, setReminders, toast }) {
+function Settings({ residents, setResidents, transactions, setTransactions, projects, setProjects, contribs, setContribs, reminders, setReminders, setProvider, toast }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const {confirm, dialog} = useConfirm();
   const backup = () => {
@@ -936,6 +1397,7 @@ function Settings({ residents, setResidents, transactions, setTransactions, proj
     setProjects(SEED_PROJECTS);
     setContribs(SEED_CONTRIBS);
     setReminders(SEED_REMINDERS);
+    setProvider(SEED_PROVIDER);
     setConfirmReset(false);
     toast("Data reset to demo data", "warn");
   };
@@ -1003,6 +1465,7 @@ const NAV = [
   {id:"residents",l:"Residents",n:"people"},
   {id:"payments", l:"Payments", n:"card"},
   {id:"projects", l:"Projects", n:"layers"},
+  {id:"provider", l:"Provider", n:"shield"},
   {id:"reminders",l:"Reminders",n:"warn"},
   {id:"reports",  l:"Reports",  n:"bar"},
   {id:"settings", l:"Settings", n:"file"},
@@ -1015,6 +1478,8 @@ export default function App() {
   const [projects, setProjects]   = useState([]);
   const [contribs, setContribs]   = useState([]);
   const [reminders, setReminders] = useState([]);
+  const [provider, setProvider] = useState(SEED_PROVIDER);
+  const [residentMode, setResidentMode] = useState(false);
   const [loaded, setLoaded]     = useState(false);
   const [tourStep, setTourStep]   = useState(null);
   const [authMode, setAuthMode] = useState("checking");
@@ -1056,6 +1521,7 @@ export default function App() {
   useEffect(() => { if (loaded && authMode === "offline") ss(KEYS.p, projects); }, [projects, loaded, authMode]);
   useEffect(() => { if (loaded && authMode === "offline") ss(KEYS.c, contribs); }, [contribs, loaded, authMode]);
   useEffect(() => { if (loaded && authMode === "offline") ss(KEYS.rem, reminders); }, [reminders, loaded, authMode]);
+  useEffect(() => { if (loaded && authMode === "offline") ss(PROVIDER_KEY, provider); }, [provider, loaded, authMode]);
   useEffect(() => {
     if (!loaded || authMode !== "signed-in") return;
     const timer = setTimeout(() => apiRequest("/data", {method:"PUT",body:JSON.stringify({residents,transactions:txns,projects,contribs,reminders})}, authToken).catch(() => toast("Cloud sync failed", "error")), 350);
@@ -1065,17 +1531,19 @@ export default function App() {
   const authenticated = data => {
     ss(AUTH_KEY, data.accessToken || data.token); ss(REFRESH_KEY, data.refreshToken || null); setAuthToken(data.accessToken || data.token); setAuthUser(data.user);
     const source = data.data.residents.length ? data.data : {residents:SEED_RESIDENTS,transactions:buildSeedTxns(),projects:SEED_PROJECTS,contribs:SEED_CONTRIBS};
-    setResidents(source.residents); setTxns(source.transactions); setProjects(source.projects); setContribs(source.contribs); setReminders(source.reminders || []); setLoaded(true); setAuthMode("signed-in");
+    setResidents(source.residents); setTxns(source.transactions); setProjects(source.projects); setContribs(source.contribs); setReminders(source.reminders || []); setProvider(sg(PROVIDER_KEY, null) ?? SEED_PROVIDER); setLoaded(true); setAuthMode("signed-in");
   };
-  const offline = () => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setResidents(sg(KEYS.r, null) ?? SEED_RESIDENTS); setTxns(sg(KEYS.t, null) ?? buildSeedTxns()); setProjects(sg(KEYS.p, null) ?? SEED_PROJECTS); setContribs(sg(KEYS.c, null) ?? SEED_CONTRIBS); setReminders(sg(KEYS.rem, null) ?? SEED_REMINDERS); setLoaded(true); setAuthMode("offline"); if (!sg(KEYS.tour, false)) setTourStep(0); };
+  const offline = () => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setResidents(sg(KEYS.r, null) ?? SEED_RESIDENTS); setTxns(sg(KEYS.t, null) ?? buildSeedTxns()); setProjects(sg(KEYS.p, null) ?? SEED_PROJECTS); setContribs(sg(KEYS.c, null) ?? SEED_CONTRIBS); setReminders(sg(KEYS.rem, null) ?? SEED_REMINDERS); setProvider(sg(PROVIDER_KEY, null) ?? SEED_PROVIDER); setLoaded(true); setAuthMode("offline"); if (!sg(KEYS.tour, false)) setTourStep(0); };
   const logout = () => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setAuthToken(null); setAuthUser(null); setLoaded(false); setTourStep(null); setAuthMode("signed-out"); };
 
   const tourNext = () => {
     const nx = tourStep + 1;
-    if (nx >= TOUR.length) { setTourStep(null); ss(KEYS.tour, true); return; }
-    setPage(TOUR[nx].page); setTourStep(nx);
+    if (nx >= TOUR.length) { setTourStep(null); setResidentMode(false); ss(KEYS.tour, true); return; }
+    const target = TOUR[nx].page;
+    if (target === "residentview") { setResidentMode(true); } else { setResidentMode(false); setPage(target); }
+    setTourStep(nx);
   };
-  const tourSkip = () => { setTourStep(null); ss(KEYS.tour, true); };
+  const tourSkip = () => { setTourStep(null); setResidentMode(false); ss(KEYS.tour, true); };
 
   if (authMode === "checking") return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#f0f5f1",fontFamily:"system-ui"}}>
@@ -1112,8 +1580,8 @@ export default function App() {
         }
       `}</style>
 
-      {/* Sidebar */}
-      <div className="app-sidebar no-print" style={{width:216,background:"#0d1f13",flexShrink:0,display:"flex",flexDirection:"column",minHeight:"100vh",position:"sticky",top:0,height:"100vh"}}>
+      {/* Sidebar — hidden in Resident View */}
+      {!residentMode && <div className="app-sidebar no-print" style={{width:216,background:"#0d1f13",flexShrink:0,display:"flex",flexDirection:"column",minHeight:"100vh",position:"sticky",top:0,height:"100vh"}}>
         <div style={{padding:"1.35rem 1.2rem 0.9rem",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
           <div style={{fontWeight:900,fontSize:"0.94rem",color:"#fff",lineHeight:1.2}}>🏡 Lemayian Court</div>
           <div style={{fontSize:"0.67rem",color:"#6aaa7a",marginTop:"0.22rem",textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:800}}>Estate Manager</div>
@@ -1130,22 +1598,32 @@ export default function App() {
           {authMode === "signed-in" ? <button onClick={logout} style={{marginTop:"0.55rem",background:"transparent",border:"1px solid rgba(255,255,255,0.14)",borderRadius:8,color:"rgba(255,255,255,0.62)",fontSize:"0.7rem",padding:"0.4rem 0.72rem",cursor:"pointer",width:"100%",textAlign:"left",fontFamily:"inherit"}}>Sign out{authUser?.email ? ` · ${authUser.email}` : ""}</button> : <div style={{fontSize:"0.68rem",color:"#d9b35c",marginTop:"0.6rem"}}>Offline demo mode</div>}
           <div style={{fontSize:"0.63rem",color:"rgba(255,255,255,0.2)",marginTop:"0.65rem",textAlign:"center"}}>© 2025 Lemayian Court</div>
         </div>
-      </div>
+      </div>}
 
       {/* Main content */}
       <div className="app-main" style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         <div style={{background:"#fff",borderBottom:"1px solid #e2ece4",padding:"0.7rem 1.4rem",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
-          <div style={{fontWeight:800,color:"#0f2417",fontSize:"0.91rem"}}>{NAV.find(n=>n.id===page)?.l}</div>
-          <div style={{fontSize:"0.77rem",color:"#8a9e91"}}>{new Date().toLocaleDateString("en-KE",{weekday:"short",year:"numeric",month:"short",day:"numeric"})}</div>
+          <div style={{fontWeight:800,color:"#0f2417",fontSize:"0.91rem"}}>{residentMode ? "Resident View" : NAV.find(n=>n.id===page)?.l}</div>
+          <div style={{...FL,gap:"0.7rem"}}>
+            <div style={{fontSize:"0.77rem",color:"#8a9e91"}}>{new Date().toLocaleDateString("en-KE",{weekday:"short",year:"numeric",month:"short",day:"numeric"})}</div>
+            {residentMode
+              ? <BTN v="sec" sz="sm" onClick={() => setResidentMode(false)}><Ico n="back" sz={13}/> Back to Admin</BTN>
+              : <BTN v="sec" sz="sm" onClick={() => { setResidentMode(true); setTourStep(null); }}><Ico n="user" sz={13}/> Resident View 👤</BTN>}
+          </div>
         </div>
         <main style={{flex:1,padding:"1.4rem",maxWidth:920,width:"100%"}}>
-          {page==="dashboard" && <Dashboard residents={residents} transactions={txns} setPage={setPage}/>}
+          {residentMode
+            ? <ResidentView residents={residents} transactions={txns} provider={provider} onBack={() => setResidentMode(false)}/>
+            : <>
+                {page==="dashboard" && <Dashboard residents={residents} transactions={txns} setPage={setPage} provider={provider}/>}
           {page==="residents" && <Residents residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} contribs={contribs} setContribs={setContribs} toast={toast}/>}
           {page==="payments"  && <Payments  residents={residents} transactions={txns} setTransactions={setTxns} toast={toast}/>}
           {page==="projects"  && <Projects  projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} residents={residents} toast={toast}/>}
           {page==="reminders" && <Reminders residents={residents} reminders={reminders} setReminders={setReminders} transactions={txns} toast={toast}/>}
           {page==="reports"   && <Reports   residents={residents} transactions={txns}/>}
-          {page==="settings"  && <Settings  residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} reminders={reminders} setReminders={setReminders} toast={toast}/>}
+          {page==="provider"  && <Provider  provider={provider} setProvider={setProvider} toast={toast}/>}
+          {page==="settings"  && <Settings  residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} reminders={reminders} setReminders={setReminders} setProvider={setProvider} toast={toast}/>}
+              </>}
         </main>
       </div>
 
