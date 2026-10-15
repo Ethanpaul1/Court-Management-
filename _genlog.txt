@@ -1,0 +1,94 @@
+Ledger rows: 1001
+--- Residents ---
+
+[32;1mIndex[0m[32;1m StartCol[0m[32;1m Name[0m
+[32;1m-----[0m [32;1m--------[0m [32;1m----[0m
+    0        1 Hon. Ndetei
+    1        8 Esther Gicimu
+    2       15 Njoroge
+    3       22 Magomere
+    4       29 Karanja
+    5       36 Muriuki
+    6       43 Mbindu
+    7       50 Mwanthi
+
+--- Closing balances ---
+
+[32;1mYear[0m[32;1m Resident     [0m[32;1m   Closing[0m[32;1m LastRow[0m
+[32;1m----[0m [32;1m--------     [0m [32;1m  -------[0m [32;1m-------[0m
+2021 Hon. Ndetei     8750.00      36
+2021 Esther Gicimu      0.00      36
+2021 Njoroge            0.00      36
+2021 Magomere      -10500.00      36
+2021 Karanja            0.00      36
+2021 Muriuki        -3500.00      36
+2021 Mbindu             0.00      36
+2021 Mwanthi        10500.00      36
+2022 Hon. Ndetei    27000.00      35
+2022 Esther Gicimu      0.00      35
+2022 Njoroge            0.00      35
+2022 Magomere           0.00      35
+2022 Karanja         4000.00      35
+2022 Muriuki            0.00      35
+2022 Mbindu             0.00      35
+2022 Mwanthi         4000.00      35
+2023 Hon. Ndetei    30000.00      36
+2023 Esther Gicimu      0.00      28
+2023 Njoroge         4000.00      29
+2023 Magomere           0.00      29
+2023 Karanja        16000.00      30
+2023 Muriuki            0.00      34
+2023 Mbindu             0.00      31
+2023 Mwanthi            0.00      32
+2024 Hon. Ndetei     4250.00      36
+2024 Esther Gicimu   4000.00      25
+2024 Njoroge        -4000.00      29
+2024 Magomere           0.00      29
+2024 Karanja        12000.00      29
+2024 Muriuki            0.00      33
+2024 Mbindu             0.00      25
+2024 Mwanthi        -4000.00      31
+2025 Hon. Ndetei     4000.00      26
+2025 Esther Gicimu      0.00      26
+2025 Njoroge         8000.00      25
+2025 Magomere       -4000.00      27
+2025 Karanja        32000.00      28
+2025 Muriuki            0.00      33
+2025 Mbindu             0.00      25
+2025 Mwanthi            0.00      31
+2026 Hon. Ndetei        0.00      32
+2026 Esther Gicimu      0.00      32
+2026 Njoroge            0.00      32
+2026 Magomere        4000.00      32
+2026 Karanja        33000.00      32
+2026 Muriuki        -8000.00      32
+2026 Mbindu        -12000.00      32
+2026 Mwanthi            0.00      32
+
+--- Provider ---
+
+[32;1mName          : [0mOlosho Security
+[32;1mContact       : [0mMasinde
+[32;1mMobile        : [0m0768110169
+[32;1mHotline       : [0m0786776634
+[32;1mPaybill       : [0m8002331
+[32;1mMonthlyCharge : [0m30000
+
+--- GateHouse totals ---
+
+[32;1mEstimated : [0m365080
+[32;1mActual    : [0m456479
+[32;1mVariance  : [0m91399
+
+2021 synthesised opening rows: 8
+Rows emitted: 937
+By year: 2021=163 2022=159 2023=168 2024=173 2025=157 2026=117
+--- Recomputed balances from workbook rows ---
+r1 = 74000
+r2 = 4000
+r3 = 8000
+r4 = -10500
+r5 = 97000
+r6 = -11500
+r7 = -12000
+r8 = 10500

@@ -1,0 +1,700 @@
+{
+  "Residents": [
+    {
+      "Index": 0,
+      "StartCol": 1,
+      "Name": "Hon. Ndetei"
+    },
+    {
+      "Index": 1,
+      "StartCol": 8,
+      "Name": "Esther Gicimu"
+    },
+    {
+      "Index": 2,
+      "StartCol": 15,
+      "Name": "Njoroge"
+    },
+    {
+      "Index": 3,
+      "StartCol": 22,
+      "Name": "Magomere"
+    },
+    {
+      "Index": 4,
+      "StartCol": 29,
+      "Name": "Karanja"
+    },
+    {
+      "Index": 5,
+      "StartCol": 36,
+      "Name": "Muriuki"
+    },
+    {
+      "Index": 6,
+      "StartCol": 43,
+      "Name": "Mbindu"
+    },
+    {
+      "Index": 7,
+      "StartCol": 50,
+      "Name": "Mwanthi"
+    }
+  ],
+  "Closing": [
+    {
+      "Year": "2021",
+      "Resident": "Hon. Ndetei",
+      "Closing": 8750.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Esther Gicimu",
+      "Closing": 0.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Njoroge",
+      "Closing": 0.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Magomere",
+      "Closing": -10500.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Karanja",
+      "Closing": 0.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Muriuki",
+      "Closing": -3500.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Mbindu",
+      "Closing": 0.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2021",
+      "Resident": "Mwanthi",
+      "Closing": 10500.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2022",
+      "Resident": "Hon. Ndetei",
+      "Closing": 27000.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Esther Gicimu",
+      "Closing": 0.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Njoroge",
+      "Closing": 0.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Magomere",
+      "Closing": 0.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Karanja",
+      "Closing": 4000.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Muriuki",
+      "Closing": 0.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Mbindu",
+      "Closing": 0.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2022",
+      "Resident": "Mwanthi",
+      "Closing": 4000.0,
+      "LastRow": 35
+    },
+    {
+      "Year": "2023",
+      "Resident": "Hon. Ndetei",
+      "Closing": 30000.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2023",
+      "Resident": "Esther Gicimu",
+      "Closing": 0.0,
+      "LastRow": 28
+    },
+    {
+      "Year": "2023",
+      "Resident": "Njoroge",
+      "Closing": 4000.0,
+      "LastRow": 29
+    },
+    {
+      "Year": "2023",
+      "Resident": "Magomere",
+      "Closing": 0.0,
+      "LastRow": 29
+    },
+    {
+      "Year": "2023",
+      "Resident": "Karanja",
+      "Closing": 16000.0,
+      "LastRow": 30
+    },
+    {
+      "Year": "2023",
+      "Resident": "Muriuki",
+      "Closing": 0.0,
+      "LastRow": 34
+    },
+    {
+      "Year": "2023",
+      "Resident": "Mbindu",
+      "Closing": 0.0,
+      "LastRow": 31
+    },
+    {
+      "Year": "2023",
+      "Resident": "Mwanthi",
+      "Closing": 0.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2024",
+      "Resident": "Hon. Ndetei",
+      "Closing": 4250.0,
+      "LastRow": 36
+    },
+    {
+      "Year": "2024",
+      "Resident": "Esther Gicimu",
+      "Closing": 4000.0,
+      "LastRow": 25
+    },
+    {
+      "Year": "2024",
+      "Resident": "Njoroge",
+      "Closing": -4000.0,
+      "LastRow": 29
+    },
+    {
+      "Year": "2024",
+      "Resident": "Magomere",
+      "Closing": 0.0,
+      "LastRow": 29
+    },
+    {
+      "Year": "2024",
+      "Resident": "Karanja",
+      "Closing": 12000.0,
+      "LastRow": 29
+    },
+    {
+      "Year": "2024",
+      "Resident": "Muriuki",
+      "Closing": 0.0,
+      "LastRow": 33
+    },
+    {
+      "Year": "2024",
+      "Resident": "Mbindu",
+      "Closing": 0.0,
+      "LastRow": 25
+    },
+    {
+      "Year": "2024",
+      "Resident": "Mwanthi",
+      "Closing": -4000.0,
+      "LastRow": 31
+    },
+    {
+      "Year": "2025",
+      "Resident": "Hon. Ndetei",
+      "Closing": 4000.0,
+      "LastRow": 26
+    },
+    {
+      "Year": "2025",
+      "Resident": "Esther Gicimu",
+      "Closing": 0.0,
+      "LastRow": 26
+    },
+    {
+      "Year": "2025",
+      "Resident": "Njoroge",
+      "Closing": 8000.0,
+      "LastRow": 25
+    },
+    {
+      "Year": "2025",
+      "Resident": "Magomere",
+      "Closing": -4000.0,
+      "LastRow": 27
+    },
+    {
+      "Year": "2025",
+      "Resident": "Karanja",
+      "Closing": 32000.0,
+      "LastRow": 28
+    },
+    {
+      "Year": "2025",
+      "Resident": "Muriuki",
+      "Closing": 0.0,
+      "LastRow": 33
+    },
+    {
+      "Year": "2025",
+      "Resident": "Mbindu",
+      "Closing": 0.0,
+      "LastRow": 25
+    },
+    {
+      "Year": "2025",
+      "Resident": "Mwanthi",
+      "Closing": 0.0,
+      "LastRow": 31
+    },
+    {
+      "Year": "2026",
+      "Resident": "Hon. Ndetei",
+      "Closing": 0.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Esther Gicimu",
+      "Closing": 0.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Njoroge",
+      "Closing": 0.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Magomere",
+      "Closing": 4000.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Karanja",
+      "Closing": 33000.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Muriuki",
+      "Closing": -8000.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Mbindu",
+      "Closing": -12000.0,
+      "LastRow": 32
+    },
+    {
+      "Year": "2026",
+      "Resident": "Mwanthi",
+      "Closing": 0.0,
+      "LastRow": 32
+    }
+  ],
+  "GateHouseContribs": [
+    {
+      "Resident": "Hon. Ndetei",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Esther Gicimu",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Njoroge",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Magomere",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Karanja",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Muriuki",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Mbindu",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Mwanthi",
+      "Label": "",
+      "Amount": 50000.0,
+      "Row": 38
+    },
+    {
+      "Resident": "Hon. Ndetei",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Esther Gicimu",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Njoroge",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Magomere",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Karanja",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Muriuki",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Mbindu",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Mwanthi",
+      "Label": "",
+      "Amount": 10000.0,
+      "Row": 39
+    },
+    {
+      "Resident": "Hon. Ndetei",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Esther Gicimu",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Njoroge",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Magomere",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Karanja",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Muriuki",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Mbindu",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    },
+    {
+      "Resident": "Mwanthi",
+      "Label": "",
+      "Amount": 60000.0,
+      "Row": 42
+    }
+  ],
+  "GateHouseItems": [
+    {
+      "Item": "1",
+      "Dates": "2021",
+      "Desc": "Quoted by contractor",
+      "Estimated": 318080.0,
+      "Actual": 303000.0,
+      "Variance": -15080.0,
+      "Remarks": "Advanced in 5 instalments"
+    },
+    {
+      "Item": "2",
+      "Dates": "2021",
+      "Desc": "City Council cost",
+      "Estimated": 0.0,
+      "Actual": 30000.0,
+      "Variance": 30000.0,
+      "Remarks": ""
+    },
+    {
+      "Item": "3",
+      "Dates": "2021",
+      "Desc": "Water works",
+      "Estimated": 0.0,
+      "Actual": 27320.0,
+      "Variance": 27320.0,
+      "Remarks": "Laying pipes/meter from House 1"
+    },
+    {
+      "Item": "4",
+      "Dates": "2021",
+      "Desc": "Metal Gate rebuild",
+      "Estimated": 35000.0,
+      "Actual": 15000.0,
+      "Variance": -20000.0,
+      "Remarks": "remodelled old one"
+    },
+    {
+      "Item": "5",
+      "Dates": "2021",
+      "Desc": "External Road works",
+      "Estimated": 0.0,
+      "Actual": 19400.0,
+      "Variance": 19400.0,
+      "Remarks": "Kerbs outside"
+    },
+    {
+      "Item": "6",
+      "Dates": "2021",
+      "Desc": "Tile repair after leaks",
+      "Estimated": 0.0,
+      "Actual": 4180.0,
+      "Variance": 4180.0,
+      "Remarks": "Pipe leakage"
+    },
+    {
+      "Item": "7",
+      "Dates": "2021",
+      "Desc": "W/basin+m/hole cover",
+      "Estimated": 0.0,
+      "Actual": 1650.0,
+      "Variance": 1650.0,
+      "Remarks": "abandoned by contractor"
+    },
+    {
+      "Item": "8",
+      "Dates": "2021",
+      "Desc": "System.Xml.XmlElement",
+      "Estimated": 0.0,
+      "Actual": 16920.0,
+      "Variance": 16920.0,
+      "Remarks": "abandoned by contractor"
+    },
+    {
+      "Item": "9",
+      "Dates": "2021",
+      "Desc": "System.Xml.XmlElement",
+      "Estimated": 0.0,
+      "Actual": 2500.0,
+      "Variance": 2500.0,
+      "Remarks": "abandoned by contractor"
+    },
+    {
+      "Item": "10",
+      "Dates": "2021",
+      "Desc": "Lighting",
+      "Estimated": 0.0,
+      "Actual": 4500.0,
+      "Variance": 4500.0,
+      "Remarks": "Security light"
+    },
+    {
+      "Item": "11",
+      "Dates": "2021",
+      "Desc": "System.Xml.XmlElement",
+      "Estimated": 12000.0,
+      "Actual": 0.0,
+      "Variance": -12000.0,
+      "Remarks": "Outstanding"
+    },
+    {
+      "Item": "",
+      "Dates": "2024-01-24",
+      "Desc": "Facilitation",
+      "Estimated": null,
+      "Actual": 2000.0,
+      "Variance": null,
+      "Remarks": ""
+    },
+    {
+      "Item": "",
+      "Dates": "2024-01-01",
+      "Desc": "Chair",
+      "Estimated": null,
+      "Actual": 875.0,
+      "Variance": null,
+      "Remarks": ""
+    },
+    {
+      "Item": "",
+      "Dates": "2024-01-01",
+      "Desc": "Phone",
+      "Estimated": null,
+      "Actual": 2250.0,
+      "Variance": null,
+      "Remarks": ""
+    },
+    {
+      "Item": "12",
+      "Dates": "2024-02-01",
+      "Desc": "Gate repair",
+      "Estimated": null,
+      "Actual": 1000.0,
+      "Variance": null,
+      "Remarks": ""
+    },
+    {
+      "Item": "13",
+      "Dates": "2024-02-01",
+      "Desc": "Murram",
+      "Estimated": 0.0,
+      "Actual": 10500.0,
+      "Variance": 10500.0,
+      "Remarks": ""
+    },
+    {
+      "Item": "",
+      "Dates": "2024-03-04",
+      "Desc": "Water Closet",
+      "Estimated": null,
+      "Actual": 5770.0,
+      "Variance": null,
+      "Remarks": ""
+    },
+    {
+      "Item": "",
+      "Dates": "2025-01-02",
+      "Desc": "Water pipe repair",
+      "Estimated": null,
+      "Actual": 6500.0,
+      "Variance": null,
+      "Remarks": ""
+    },
+    {
+      "Item": "",
+      "Dates": "2025-12-25",
+      "Desc": "Christmas Shopping",
+      "Estimated": null,
+      "Actual": 3114.0,
+      "Variance": null,
+      "Remarks": ""
+    }
+  ],
+  "GateHouseTotals": {
+    "Estimated": 365080.0,
+    "Actual": 456479.0,
+    "Variance": 91399.0
+  },
+  "Provider": {
+    "Name": "Olosho Security",
+    "Contact": "Masinde",
+    "Mobile": "0768110169",
+    "Hotline": "0786776634",
+    "Paybill": "8002331",
+    "MonthlyCharge": 30000.0
+  },
+  "PaymentDetails": [
+    {
+      "DateRaw": "2023-05-04",
+      "Date": "2023-05-04",
+      "Amount": 29000.0,
+      "Code": "RE43PH510X",
+      "Time": "04:13PM",
+      "ForMonth": "2023-04-01"
+    },
+    {
+      "DateRaw": "2023-05-30",
+      "Date": "2023-05-30",
+      "Amount": 29000.0,
+      "Code": "REU5SBKNLR",
+      "Time": "03:56PM",
+      "ForMonth": "2023-05-23"
+    },
+    {
+      "DateRaw": "March",
+      "Date": null,
+      "Amount": 700.0,
+      "Code": "Grass planting",
+      "Time": "",
+      "ForMonth": ""
+    },
+    {
+      "DateRaw": "May",
+      "Date": null,
+      "Amount": 700.0,
+      "Code": "Weeding",
+      "Time": "",
+      "ForMonth": ""
+    }
+  ]
+}

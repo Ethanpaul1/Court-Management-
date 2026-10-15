@@ -1,0 +1,9 @@
+﻿=== SHEET: SProviders  (worksheets/sheet8.xml) ===
+R3 : A3=Name: | B3=Olosho Security
+R4 : A4=Contact: | B4=Masinde
+R5 : A5=Mobile: | B5=0768110169
+R6 : A6=Hotline: | B6=0786776634
+R7 : A7=
+R8 : A8=Paybill: | B8=8002331
+R9 : A9=
+R10 : A10=Monhtly Charge | B10=30000

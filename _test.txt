@@ -1,0 +1,22 @@
+PASS src/App.test.js
+  workbook import and reconciliation
+    ΓêÜ 2026 closing balances reconcile against the workbook (16 ms)
+    ΓêÜ 2026 opening balances are the workbook b/fwd positions (2 ms)
+    ΓêÜ closing = opening + charges - payments for every resident (2 ms)
+    ΓêÜ every imported year from 2021 to 2026 is present with transactions (3 ms)
+    ΓêÜ historical levy rates are preserved per year, not retro-applied (1 ms)
+    ΓêÜ all money values are exact integers (293 ms)
+    ΓêÜ every transaction is traceable to its source worksheet row (62 ms)
+    ΓêÜ b/fwd rows are opening balances, never counted as levies (4 ms)
+    ΓêÜ positive, zero, and negative balances all occur (1 ms)
+    ΓêÜ monthly collections come from payments, not charges (1 ms)
+    ΓêÜ GateHouse workbook totals are carried through
+    ΓêÜ duplicate charges are detected within the same month only
+    ΓêÜ removing a resident cascades to transactions and contributions (1 ms)
+    ΓêÜ backup validation requires resident and transaction arrays
+
+Test Suites: 1 passed, 1 total
+Tests:       14 passed, 14 total
+Snapshots:   0 total
+Time:        2.008 s, estimated 3 s
+Ran all test suites.

@@ -1,0 +1,28 @@
+﻿=== SHEET: GateHouse  (worksheets/sheet1.xml) ===
+R1 : A1=GateHouse Project | B1=
+R3 : A3=Item # | B3=Dates | C3=Description | D3=Estimated Cost | E3=Actual Cost | F3= | G3=Remarks 
+R4 : A4=1 | B4=2021 | C4=Quoted by contractor | D4=318080 | E4=303000 {F:160000+90000+30000+10000+13000} | F4=-15080 {F:System.Xml.XmlElement} | G4=Advanced in 5 instalments
+R5 : A5=2 | B5=2021 | C5=City Council cost | D5=0 | E5=30000 | F5=30000 {F:System.Xml.XmlElement}
+R6 : A6=3 | B6=2021 | C6=Water works | D6=0 | E6=27320 | F6=27320 {F:System.Xml.XmlElement} | G6=Laying pipes/meter from House 1
+R7 : A7=4 | B7=2021 | C7=Metal Gate rebuild | D7=35000 | E7=15000 | F7=-20000 {F:System.Xml.XmlElement} | G7=remodelled old one
+R8 : A8=5 | B8=2021 | C8=External Road works | D8=0 | E8=19400 | F8=19400 {F:System.Xml.XmlElement} | G8=Kerbs outside
+R9 : A9=6 | B9=2021 | C9=Tile repair after leaks | D9=0 | E9=4180 | F9=4180 {F:System.Xml.XmlElement} | G9=Pipe leakage
+R10 : A10=7 | B10=2021 | C10=W/basin+m/hole cover | D10=0 | E10=1650 | F10=1650 {F:System.Xml.XmlElement} | G10=abandoned by contractor
+R11 : A11=8 | B11=2021 | C11=Painting  | D11=0 | E11=16920 | F11=16920 {F:System.Xml.XmlElement} | G11=abandoned by contractor
+R12 : A12=9 | B12=2021 | C12=Window panes  | D12=0 | E12=2500 | F12=2500 {F:System.Xml.XmlElement} | G12=abandoned by contractor
+R13 : A13=10 | B13=2021 | C13=Lighting | D13=0 | E13=4500 | F13=4500 {F:System.Xml.XmlElement} | G13=Security light
+R14 : A14=11 | B14=2021 | C14=Wiring & solar  | D14=12000 | E14=0 | F14=-12000 {F:System.Xml.XmlElement} | G14=Outstanding
+R15 : A15= | B15=2024-01-24 | C15=Facilitation | D15= | E15=2000 | F15= | G15=
+R16 : A16= | B16=2024-01-01 | C16=Chair | D16= | E16=875 | F16= | G16=
+R17 : A17= | B17=2024-01-01 | C17=Phone | D17= | E17=2250 | F17= | G17=
+R18 : A18=12 | B18=2024-02-01 | C18=Gate repair | D18= | E18=1000 | F18= | G18=
+R19 : A19=13 | B19=2024-02-01 | C19=Murram | D19=0 | E19=10500 | F19=10500 {F:System.Xml.XmlElement} | G19=
+R20 : A20= | B20=2024-03-04 | C20=Water Closet | D20= | E20=5770 | F20= | G20=
+R21 : A21= | B21=2025-01-02 | C21=Water pipe repair | D21= | E21=6500 | F21= | G21=
+R22 : A22= | B22=2025-12-25 | C22=Christmas Shopping | D22= | E22=3114 | F22= | G22=
+R23 : A23= | C23= | D23= | E23= | F23= | G23=
+R24 : A24= | C24= | D24= | E24= | F24= | G24= | BF24=365080 {F:GateHouse!D26}
+R25 : D25= | E25=
+R26 : C26=Total Cost | D26=365080 {F:SUM(D4:D25)} | E26=456479 {F:SUM(E4:E25)} | F26=91399 {F:E26-D26}
+R28 : C28=Contribution per House | E28=57059.875 {F:E26/8}
+R29 : C29=Rounded up) | E29=60000
