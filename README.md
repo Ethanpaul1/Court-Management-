@@ -151,16 +151,40 @@ lemayian-court/
 
 ## 💾 Data & Storage
 
-- **Persistence** — every change is saved automatically to your browser's `localStorage` under keys prefixed with `lc-`. Closing the tab **does not** lose your data.
-- **Seed data** — on first launch the app seeds 8 residents (units A1–A8), a full 2025 levy ledger, and two GateHouse project entries so the dashboard is instantly populated.
-- **Levy configuration** — the standard monthly levy is **KES 4,000** (KES 3,750 security + KES 250 others). Amounts are adjustable when posting.
-- **Reset** — use **Settings → Reset to demo data** to restore the seeded residents, reconciled PDF balances, transactions, and project contributions.
+- **Offline persistence** — offline mode saves records in browser `localStorage` using the `lc-r6`, `lc-t6`, `lc-p6`, `lc-c6`, `lc-rem6`, and `lc-provider6` keys. Closing the tab does not clear those records.
+- **Legacy migration** — missing v6 arrays are copied from v3–v5 keys only after a backup is written and verified at `lc-migration-backup-6`. Older keys are left intact. A malformed source stops migration instead of replacing data.
+- **Workbook ledger** — `src/workbookLedger.js` contains 939 app ledger events from the 2021–2026 resident sheets with worksheet-row references: 2021 (163), 2022 (161), 2023 (168), 2024 (173), 2025 (157), and 2026 (117). This includes 48 opening/restatement entries. Credits recorded on the same row as charges are represented as separate payment events. Payment Details references are review evidence and are not added to resident balances unless confidently matched.
+- **Reconciliation findings** — the 2026 source gives Magomere an opening credit of KES 4,000, conflicting with the prompt's zero target. Hon. Ndetei's 2025 opening is KES 7,000 below the calculated 2024 closing. Both are shown as workbook conflicts, not silently adjusted.
+- **GateHouse evidence** — the workbook lists KES 365,080 estimated costs and KES 456,479 actual expenditure, a KES 91,399 variance. The 2026 resident summaries separately show KES 400,000 and KES 80,000 received for the two contribution categories; receipts are not treated as expenditure.
+- **Levy configuration** — the current monthly levy is **KES 4,000** (KES 3,750 security + KES 250 others); historical splits remain on their original entries.
+- **Provider** — profile data is included in JSON backups and authenticated estate sync. The browser key remains a fallback for older API records.
+- **Reset** — use **Settings → Reset to demo data** only on a demonstration workspace; this replaces the current data in that workspace.
 
-> ⚠️ Because data lives in the browser, always back up your browser profile or use a shared machine consistently for long-term record keeping.
+> ⚠️ The original `.xlsx` is not checked in. Keep the original workbook and a separate backup; the generated ledger data is not a substitute for the source file.
+
+Resident View in offline mode is a demonstration selector, not authentication. Authenticated resident users are linked server-side to one resident ID; `/api/me`, account, statement, transaction, and receipt endpoints scope results to that mapping. The resident identity is not taken from request query parameters. No resident phone numbers were present in the available workbook source, so WhatsApp actions remain disabled until verified contacts are entered.
+
+### Linking resident accounts
+
+Only an estate owner can link a login. First authenticate as the estate owner and retrieve the existing resident IDs from `GET /api/residents`. Then create a resident member with that exact ID:
+
+```json
+{
+   "email": "resident@example.com",
+   "name": "Resident Name",
+   "password": "<set a unique password securely>",
+   "role": "resident",
+   "residentId": "<existing resident id from this estate>"
+}
+```
+
+Send that body to `POST /api/members` with the owner bearer token. The server rejects IDs that do not exist in the owner's estate and rejects duplicate resident mappings. Do not send the example password literally. The workspace does not yet have an in-app member invitation screen.
 
 ## Production deployment notes
 
-The app now includes a local authenticated API with password hashing, short-lived signed access tokens, rotating refresh tokens, estate-scoped roles (`owner`, `manager`, `accountant`, and `viewer`), rate limiting, audit records, rolling local backups, and schema-version migration defaults. The JSON file store is suitable for local development and a single controlled demo, not a multi-instance cloud deployment. Production deployment still needs a managed database, HTTPS, secret management, distributed rate limiting, and managed backup storage.
+The app includes a local authenticated API with password hashing, short-lived signed access tokens, rotating refresh tokens, estate-scoped roles (`owner`, `manager`, `accountant`, `viewer`, and linked `resident`), server-side resident scoping, API audit events, rolling local backups, append-only financial correction routes, and provider payment logging. The JSON file store is suitable for local development and a single controlled demo, not a multi-instance cloud deployment. Public deployment is not approved: use a managed database, HTTPS, secret management, controlled owner provisioning, distributed rate limiting, and managed backup storage; review the open estate-registration policy before exposing the API. Provider invoices and external payment verification are not implemented, and the payable cannot be calculated without invoice records.
+
+Posted transactions cannot be edited or deleted through estate data sync. Use `POST /api/transactions/{id}/corrections` with a reason and optional replacement; the server preserves the original, appends a reversal/corrected entry, and writes an audit event. Provider payments are created at `POST /api/provider-payments`; they are marked recorded, not independently verified. Messaging actions only prepare WhatsApp links; no SMS/WhatsApp delivery provider is configured.
 
 The reminder endpoint records intended SMS/email work but does not send messages. Connect it to a queued provider such as Africa's Talking, Twilio, or an email service from the backend. Never put provider credentials in this React app.
 

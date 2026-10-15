@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { WORKBOOK_LEDGER } from "./workbookLedger";
 
 const fmt = n => Number(n).toLocaleString("en-KE", { minimumFractionDigits:2, maximumFractionDigits:2 });
 const today = () => new Date().toISOString().slice(0,10);
@@ -14,22 +15,30 @@ const RATE_HISTORY = [
 ];
 const LEVY_HISTORY_NOTE = "Note: Levy was KES 3,500/month in 2021, increased to KES 4,000 in mid-2022";
 
-// Security provider + M-Pesa paybill
+// Security provider + M-Pesa paybill — values from the SProviders worksheet
 const PROVIDER_KEY = "lc-provider6";
+const PROVIDER_PAYMENTS_KEY = "lc-provider-payments6";
 const PAYBILL = "8002331";
 const SEED_PROVIDER = {
   name:"Olosho Security",
   contactPerson:"Masinde",
   mobile:"0768110169",
   hotline:"0786776634",
-  paybill:PAYBILL,
+  paybill:"8002331",
   monthlyCharge:30000,
   notes:"",
 };
 
-// WhatsApp deep link — strips a leading 0 (or 254) and prepends the Kenyan country code
-const waNumber = phone => `254${String(phone || "").replace(/\D/g, "").replace(/^0+/, "").replace(/^254/, "")}`;
-const waLink = (phone, message) => `https://wa.me/${waNumber(phone)}?text=${encodeURIComponent(message)}`;
+// Only create a WhatsApp link when the source contains a valid Kenyan mobile number.
+function normaliseKenyanPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  const national = digits.startsWith("254") ? digits.slice(3) : digits.startsWith("0") ? digits.slice(1) : "";
+  return /^[17]\d{8}$/.test(national) ? `254${national}` : null;
+}
+const waLink = (phone, message) => {
+  const number = normaliseKenyanPhone(phone);
+  return number ? `https://wa.me/${number}?text=${encodeURIComponent(message)}` : null;
+};
 
 // ── Reminder copy ───────────────────────────────────────────────
 const REMINDER_TYPES = {
@@ -44,6 +53,12 @@ const reminderMessage = (type, name, balance, month) =>
   type === "levy" ? levyMessage(name, month) : overdueMessage(name, balance);
 
 const KEYS = { r:"lc-r6", t:"lc-t6", p:"lc-p6", c:"lc-c6", rem:"lc-rem6", tour:"lc-tour6" };
+const LEGACY_KEYS = {
+  r:["lc-r5","lc-r4","lc-r3"], t:["lc-t5","lc-t4","lc-t3"],
+  p:["lc-p5","lc-p4","lc-p3"], c:["lc-c5","lc-c4","lc-c3"],
+  rem:["lc-rem5","lc-rem4","lc-rem3"], tour:["lc-tour5","lc-tour4","lc-tour3"],
+};
+const MIGRATION_BACKUP_KEY = "lc-migration-backup-6";
 const AUTH_KEY = "lc-auth-token";
 const REFRESH_KEY = "lc-refresh-token";
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:4000/api";
@@ -69,115 +84,277 @@ function ss(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
 }
 
-const SEED_RESIDENTS = [
-  {id:"r1",name:"Hon. Ndetei",unit:"A1",phone:"0722000001",notes:""},
-  {id:"r2",name:"Esther Gicimu",unit:"A2",phone:"0722000002",notes:""},
-  {id:"r3",name:"Njoroge",unit:"A3",phone:"0722000003",notes:""},
-  {id:"r4",name:"Magomere",unit:"A4",phone:"0722000004",notes:""},
-  {id:"r5",name:"Karanja",unit:"A5",phone:"0722000005",notes:"Chronic arrears since 2021 — escalate reminders"},
-  {id:"r6",name:"Muriuki",unit:"A6",phone:"0722000006",notes:"Pays in bulk — often in credit"},
-  {id:"r7",name:"Mbindu",unit:"A7",phone:"0722000007",notes:"Pays in bulk — often in credit"},
-  {id:"r8",name:"Mwanthi",unit:"A8",phone:"0722000008",notes:""},
-];
+function migrateLegacyStorage(storage) {
+  const pending = {};
+  for (const [name, currentKey] of Object.entries(KEYS)) {
+    if (storage.getItem(currentKey) !== null) continue;
+    for (const legacyKey of LEGACY_KEYS[name] || []) {
+      const raw = storage.getItem(legacyKey);
+      if (raw === null) continue;
+      let value;
+      try { value = JSON.parse(raw); }
+      catch { throw new Error(`Legacy data at ${legacyKey} is not valid JSON`); }
+      if (name !== "tour" && !Array.isArray(value)) throw new Error(`Legacy data at ${legacyKey} is not a valid array`);
+      pending[currentKey] = raw;
+      break;
+    }
+  }
+  const entries = Object.entries(pending);
+  if (!entries.length) return 0;
 
-function buildSeedTxns() {
-  let n=1; const T=[];
-  const ch=(rid,date)=>({id:`t${n++}`,residentId:rid,date,type:"charge",amount:MONTHLY_TOTAL,security:MONTHLY_SECURITY,others:MONTHLY_OTHERS,note:"Monthly levy"});
-  const py=(rid,date,amount,note="Payment")=>({id:`t${n++}`,residentId:rid,date,type:"payment",amount,security:0,others:0,note});
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r1",d)));
-  [["2025-04-25",16000],["2025-07-28",8000],["2025-09-15",8000],["2025-11-24",4000],["2025-12-16",8000]].forEach(([d,a])=>T.push(py("r1",d,a)));
-  ["2025-01-26","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r2",d)));
-  [["2025-01-18",12000],["2025-03-01",4000],["2025-04-08",12000],["2025-07-30",12000],["2025-10-29",8000]].forEach(([d,a])=>T.push(py("r2",d,a)));
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r3",d)));
-  [["2025-01-28",8000],["2025-03-05",4000],["2025-03-30",4000],["2025-06-26",8000],["2025-10-29",16000]].forEach(([d,a])=>T.push(py("r3",d,a)));
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r4",d)));
-  [["2025-01-28",8000],["2025-03-31",8000],["2025-04-24",8000],["2025-07-22",8000],["2025-10-29",16000]].forEach(([d,a])=>T.push(py("r4",d,a)));
-  T.push({id:`t${n++}`,residentId:"r5",date:"2025-01-01",type:"openingBalance",amount:12000,security:0,others:0,note:"Opening balance b/fwd"});
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r5",d)));
-  [["2025-02-11",4000],["2025-04-14",4000],["2025-06-03",4000],["2025-07-13",4000],["2025-09-10",4000],["2025-11-17",4000],["2025-12-12",4000]].forEach(([d,a])=>T.push(py("r5",d,a)));
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r6",d)));
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(py("r6",d,4000)));
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r7",d)));
-  [["2025-02-06",12000],["2025-04-24",12000],["2025-08-03",12000],["2025-10-29",12000]].forEach(([d,a])=>T.push(py("r7",d,a)));
-  ["2025-01-25","2025-02-25","2025-03-25","2025-04-24","2025-05-25","2025-06-25","2025-07-27","2025-08-25","2025-09-25","2025-10-25","2025-11-25","2025-12-25"].forEach(d=>T.push(ch("r8",d)));
-  [["2025-02-27",4000],["2025-03-28",4000],["2025-04-25",4000],["2025-05-14",4000],["2025-06-27",4000],["2025-08-03",4000],["2025-09-19",16000],["2025-10-29",4000],["2025-11-20",4000]].forEach(([d,a])=>T.push(py("r8",d,a)));
-  const r1Refs = ["QKJ3A1BX2R","QKL9M3PX7T","QKM2N4RY8U","QKN5P6SZ9V","QKP8Q7TA1W"];
-  T.filter(t => t.residentId === "r1" && t.type === "payment").forEach((t,i) => { t.mpesa = r1Refs[i]; });
-  const r2Refs = ["QKA1B2C3D4","QKE5F6G7H8","QKI9J0K1L2","QKM3N4O5P6","QKQ7R8S9T0"];
-  T.filter(t => t.residentId === "r2" && t.type === "payment").forEach((t,i) => { t.mpesa = r2Refs[i]; });
-
-  // ── 2026 ledger (Excel serials converted to ISO dates) ──────────
-  // XL maps each spreadsheet serial to its date exactly as recorded in the 2026 sheet.
-  const XL = {
-    46023:"2026-01-01", 46047:"2026-01-25", 46048:"2026-01-26", 46054:"2026-02-01",
-    46078:"2026-02-25", 46094:"2026-03-13", 46106:"2026-03-25", 46107:"2026-03-26",
-    46118:"2026-04-06", 46132:"2026-04-20", 46136:"2026-04-24", 46137:"2026-04-25",
-    46152:"2026-05-10", 46167:"2026-05-25", 46186:"2026-06-13", 46198:"2026-06-25",
-    46216:"2026-07-14", 46228:"2026-07-26", 46229:"2026-07-27", 46235:"2026-08-02",
-    46239:"2026-08-06", 46240:"2026-08-07", 46242:"2026-08-09", 46245:"2026-08-12",
-    46247:"2026-08-14", 46252:"2026-08-19", 46254:"2026-08-21", 46255:"2026-08-22",
-    46259:"2026-08-26", 46266:"2026-09-02", 46268:"2026-09-04", 46283:"2026-09-19",
-    46290:"2026-09-26", 46295:"2026-10-01", 46302:"2026-10-08",
-  };
-  // Monthly levy charges Jan–Sep 2026 (October's levy is not yet due)
-  const CH26 = [46047,46078,46106,46137,46167,46198,46228,46259,46290].map(s => XL[s]);
-  ["r1","r2","r3","r4","r5","r6","r7","r8"].forEach(rid => CH26.forEach(d => T.push(ch(rid, d))));
-
-  // The 2025 closing balances carry forward automatically as the 2026 opening (b/fwd)
-  // positions — r1 KES 4,000 · r2 KES 0 · r3 KES 8,000 · r4 KES 0 · r5 KES 32,000 ·
-  // r6 KES 0 · r7 KES 0 · r8 KES 0 — so no extra opening rows are posted for 2026.
-
-  // 2026 payments — [serial, amount] per resident
-  const P26 = {
-    r1:[[46048,4000],[46094,8000],[46132,8000],[46152,8000],[46186,4000],[46235,8000]],
-    r2:[[46054,4000],[46107,4000],[46118,8000],[46136,4000],[46216,8000],[46239,4000],[46268,4000]],
-    r3:[[46118,8000],[46152,8000],[46240,8000],[46242,8000],[46283,8000],[46302,4000]],
-    r4:[[46048,4000],[46132,4000],[46186,4000],[46245,4000],[46247,4000],[46252,8000],[46266,4000]],
-    r5:[[46054,4000],[46094,4000],[46107,4000],[46136,4000],[46229,4000],[46254,4000],[46255,4000],[46295,4000],[46302,3000]],
-    r6:[[46132,16000],[46242,12000],[46254,16000]],
-    r7:[[46054,16000],[46152,16000],[46266,16000]],
-    r8:[[46107,4000],[46118,4000],[46186,4000],[46216,4000],[46239,4000],[46245,4000],[46268,4000],[46283,4000]],
-  };
-  Object.entries(P26).forEach(([rid, list]) => list.forEach(([s,a]) => T.push(py(rid, XL[s], a, "Payment"))));
-
-  return T;
+  const backup = JSON.stringify({version:6, createdAt:new Date().toISOString(), values:pending});
+  storage.setItem(MIGRATION_BACKUP_KEY, backup);
+  const verifiedBackup = JSON.parse(storage.getItem(MIGRATION_BACKUP_KEY) || "null");
+  if (!verifiedBackup || JSON.stringify(verifiedBackup.values) !== JSON.stringify(pending)) {
+    throw new Error("Could not verify the legacy-data backup; migration was stopped");
+  }
+  for (const [key, raw] of entries) {
+    storage.setItem(key, raw);
+    if (storage.getItem(key) !== raw) throw new Error(`Could not verify migrated data for ${key}; backup is at ${MIGRATION_BACKUP_KEY}`);
+  }
+  return entries.length;
 }
 
+const SEED_RESIDENTS = [
+  {id:"r1",name:"Hon. Ndetei",unit:"A1",notes:""},
+  {id:"r2",name:"Esther Gicimu",unit:"A2",notes:""},
+  {id:"r3",name:"Njoroge",unit:"A3",notes:""},
+  {id:"r4",name:"Magomere",unit:"A4",notes:""},
+  {id:"r5",name:"Karanja",unit:"A5",notes:"Chronic arrears since 2021 — escalate reminders"},
+  {id:"r6",name:"Muriuki",unit:"A6",notes:"Pays in bulk — often in credit"},
+  {id:"r7",name:"Mbindu",unit:"A7",notes:"Pays in bulk — often in credit"},
+  {id:"r8",name:"Mwanthi",unit:"A8",notes:""},
+];
+
+// ── Ledger import ──────────────────────────────────────────────
+// Converts the workbook's imported rows (src/workbookLedger.js) into app transactions.
+// Every row keeps its source reference so any figure can be traced back to its worksheet.
+//
+// Each annual worksheet opens with a b/fwd row. Concatenating the sheets verbatim would
+// double-count those carried-forward positions, so only the EARLIEST b/fwd row per resident
+// becomes the running opening balance; every later b/fwd row is kept in the history as a
+// `restated` entry that does not move the balance.
+//
+// The workbook's own annual b/fwd figures are not always equal to the previous sheet's
+// computed closing (e.g. r1: 2024 closes 4,250 but 2025 opens -2,750; r2: 2022 closes
+// 10,500 but 2023 opens 0). Those are inconsistencies in the SOURCE workbook. They are
+// preserved exactly as recorded and surfaced by reconcile() rather than silently adjusted.
+//
+// A positive b/fwd amount means the resident owed money; a negative amount is credit.
+// Charge rows split into Security + Others; payment rows are credits.
+function buildSeedTxns() {
+  let n = 1;
+  const next = () => `t${n++}`;
+  const seen = new Set();
+  const T = [];
+  for (const row of WORKBOOK_LEDGER) {
+    if (!row.d) continue;
+    if (row.k === "b/fwd") {
+      const first = !seen.has(row.r);
+      seen.add(row.r);
+      T.push({id:next(), residentId:row.r, date:row.d,
+              type: first ? "openingBalance" : "restated",
+              amount:row.s, security:0, others:0,
+              note: first ? "Opening balance b/fwd" : "Balance b/fwd (year restated)",
+              source:row.src});
+      continue;
+    }
+    if (row.k === "payment") {
+      T.push({id:next(), residentId:row.r, date:row.d, type:"payment",
+              amount:row.c, security:0, others:0, note:"Payment", source:row.src});
+      continue;
+    }
+    // charge — keep the historical Security/Others split exactly as recorded
+    T.push({id:next(), residentId:row.r, date:row.d, type:"charge",
+          amount:row.s + row.o, security:row.s, others:row.o,
+          note:"Monthly levy", source:row.src, sourceKind:"charge"});
+        if (row.c > 0) {
+          T.push({id:next(), residentId:row.r, date:row.d, type:"payment",
+            amount:row.c, security:0, others:0, note:"Payment credit recorded on charge row",
+            source:row.src, sourceKind:"credit"});
+        }
+  }
+  return normaliseLedgerDates(T);
+}
+
+// Some rows on the 2026 sheet carry a mistyped year (e.g. Mbindu 2026!R14 is dated 2025-04-25
+// and 2026!R17 is dated 2025-07-25). The owning SHEET is authoritative, so any row whose date
+// falls outside its sheet's year is rewritten to the sheet's year, keeping month and day.
+// The original value is preserved on `sourceDate` so nothing is hidden.
+function normaliseLedgerDates(T) {
+  const yearOfSource = src => (src.match(/^(\d{4})!/) || [])[1];
+  return T.map(t => {
+    const sheetYear = yearOfSource(t.source);
+    if (!sheetYear || !t.date) return t;
+    if (t.date.startsWith(sheetYear)) return t;
+    const md = t.date.slice(4);
+    return {...t, sourceDate:t.date, date:`${sheetYear}${md}`};
+  });
+}
+
+// Year-on-year b/fwd breaks found in the source workbook. Recorded as evidence, not corrected.
+// Each entry compares a sheet's own opening figure with the previous sheet's closing figure.
+function workbookYearBreaks() {
+  const ids = ["r1","r2","r3","r4","r5","r6","r7","r8"];
+  const years = ["2021","2022","2023","2024","2025","2026"];
+  const breaks = [];
+  ids.forEach(rid => {
+    let prevClosing = null;
+    years.forEach(y => {
+      const rows = WORKBOOK_LEDGER.filter(e => e.y === y && e.r === rid);
+      const bf = rows.find(e => e.k === "b/fwd");
+      let net = 0;
+      rows.filter(e => e.k !== "b/fwd").forEach(e => {
+        net += (e.s || 0) + (e.o || 0) - (e.c || 0);
+      });
+      const opening = bf ? bf.s : 0;
+      const closing = opening + net;
+      if (prevClosing !== null && opening !== prevClosing) {
+        breaks.push({residentId:rid, from:years[years.indexOf(y)-1], to:y,
+                     previousClosing:prevClosing, thisOpening:opening,
+                     difference:opening - prevClosing});
+      }
+      prevClosing = closing;
+    });
+  });
+  return breaks;
+}
+
+// Reconciliation targets taken from the workbook's own closing rows (2026 sheet, row 32).
+// Used by the reconciliation report to prove the import matches the source.
+const WORKBOOK_CLOSING = {
+  r1:0, r2:0, r3:0, r4:4000, r5:33000, r6:-8000, r7:-12000, r8:0,
+};
+
+// Opening (b/fwd) positions recorded on the 2026 worksheet, row 9.
+const WORKBOOK_OPENING_2026 = {
+  r1:4000, r2:0, r3:8000, r4:-4000, r5:32000, r6:0, r7:0, r8:0,
+};
+
+// Opening balance targets supplied in the implementation brief; source values remain authoritative.
+const REQUESTED_OPENING_2026 = {
+  r1:4000, r2:0, r3:8000, r4:0, r5:32000, r6:0, r7:0, r8:0,
+};
+
+// GateHouse records from the GateHouse worksheet (totals row 26).
+const WORKBOOK_GATEHOUSE = {
+  estimatedTotal:365080,
+  actualTotal:456479,
+  overspend:91399,
+};
+const WORKBOOK_GATEHOUSE_ITEMS = [
+  {row:4,date:"2021",description:"Quoted by contractor",estimated:318080,actual:303000,remarks:"Advanced in 5 instalments"},
+  {row:5,date:"2021",description:"City Council cost",estimated:0,actual:30000},
+  {row:6,date:"2021",description:"Water works",estimated:0,actual:27320,remarks:"Laying pipes/meter from House 1"},
+  {row:7,date:"2021",description:"Metal Gate rebuild",estimated:35000,actual:15000,remarks:"Remodelled old one"},
+  {row:8,date:"2021",description:"External Road works",estimated:0,actual:19400,remarks:"Kerbs outside"},
+  {row:9,date:"2021",description:"Tile repair after leaks",estimated:0,actual:4180,remarks:"Pipe leakage"},
+  {row:10,date:"2021",description:"W/basin + m/hole cover",estimated:0,actual:1650,remarks:"Abandoned by contractor"},
+  {row:11,date:"2021",description:"Painting",estimated:0,actual:16920,remarks:"Abandoned by contractor"},
+  {row:12,date:"2021",description:"Window panes",estimated:0,actual:2500,remarks:"Abandoned by contractor"},
+  {row:13,date:"2021",description:"Lighting",estimated:0,actual:4500,remarks:"Security light"},
+  {row:14,date:"2021",description:"Wiring & solar",estimated:12000,actual:0,remarks:"Outstanding"},
+  {row:15,date:"2024-01-24",description:"Facilitation",estimated:null,actual:2000},
+  {row:16,date:"2024-01-01",description:"Chair",estimated:null,actual:875},
+  {row:17,date:"2024-01-01",description:"Phone",estimated:null,actual:2250},
+  {row:18,date:"2024-02-01",description:"Gate repair",estimated:null,actual:1000},
+  {row:19,date:"2024-02-01",description:"Murram",estimated:0,actual:10500},
+  {row:20,date:"2024-03-04",description:"Water Closet",estimated:null,actual:5770},
+  {row:21,date:"2025-01-02",description:"Water pipe repair",estimated:null,actual:6500},
+  {row:22,date:"2025-12-25",description:"Christmas Shopping",estimated:null,actual:3114},
+].map(item => ({...item,source:`GateHouse!row ${item.row}`}));
+const WORKBOOK_PAYMENT_REFERENCES = [
+  {row:2,date:"2023-05-04",amount:29000,reference:"RE43PH510X",detail:"For month 2023-04-01",kind:"payment reference",status:"Unmatched; excluded from resident ledger"},
+  {row:3,date:"2023-05-30",amount:29000,reference:"REU5SBKNLR",detail:"For month 2023-05-23",kind:"payment reference",status:"Unmatched; excluded from resident ledger"},
+  {row:4,date:"March",amount:700,reference:"",detail:"Grass planting",kind:"expense note",status:"Not a resident payment"},
+  {row:5,date:"May",amount:700,reference:"",detail:"Weeding",kind:"expense note",status:"Not a resident payment"},
+].map(item => ({...item,source:`Payment Details!row ${item.row}`}));
+
+// Reconciliation report. For each resident: opening position, total charges, total payments,
+// the calculated closing balance, the workbook's own closing figure, and the difference.
+// A resident's figures are scoped to the CURRENT ledger year (2026) so they match the
+// worksheet being reconciled; `restated` rows reset the chain rather than adding to it.
+function reconcile(residents, transactions) {
+  return residents.map(r => {
+    const rows = runningBalance(transactions.filter(t => t.residentId === r.id));
+    // The last restated row is the opening position of the period being reported.
+    const lastRestated = [...rows].reverse().find(t => t.type === "restated" || t.type === "openingBalance");
+    const fromDate = lastRestated ? lastRestated.date : null;
+    const opening = lastRestated ? lastRestated.amount : 0;
+    const scoped = rows.filter(t => !fromDate || t.date >= fromDate);
+    const charges  = scoped.filter(t => t.type === "charge").reduce((s,t) => s + t.amount, 0);
+    const payments = scoped.filter(t => t.type === "payment").reduce((s,t) => s + t.amount, 0);
+    const adjustments = scoped.filter(t => t.type === "reversal").reduce((s,t) => s + (Number(t.balanceEffect) || 0), 0);
+    const calculated = rows.length ? rows[rows.length-1].run : 0;
+    const expected = WORKBOOK_CLOSING[r.id];
+    return {
+      ...r, opening, charges, payments, adjustments,
+      calculated,
+      expected,
+      difference: expected === undefined ? null : calculated - expected,
+      status: expected === undefined ? "no-target"
+           : calculated === expected ? "reconciled" : "mismatch",
+      firstDate: rows.length ? rows[0].date : null,
+      lastDate:  rows.length ? rows[rows.length-1].date : null,
+      count: rows.length,
+    };
+  });
+}
+
+
+// GateHouse records from the GateHouse worksheet.
+// Workbook evidence: estimated total KES 365,080 · actual total KES 456,479 ·
+// overspend KES 91,399 (GateHouse!D26/E26/F26). The 2026 sheet shows 8 houses × KES 50,000
+// = KES 400,000 for the 1st Estimate and 8 × KES 10,000 = KES 80,000 for Additional Works.
 const SEED_PROJECTS = [
-  {id:"p1",name:"GateHouse – 1st Estimate",target:400000,notes:"Main gatehouse construction — fully funded by 2024"},
-  {id:"p2",name:"GateHouse – Additional Works",target:56479,notes:"Actual overspend beyond the initial estimate"},
-  {id:"p3",name:"GateHouse – Outstanding Items",target:12000,notes:"Wiring & solar outstanding since 2021"},
+  {id:"p1",name:"GateHouse – 1st Estimate",target:400000,received:400000,status:"Fully funded by 2024",notes:"Main gatehouse construction — fully funded by 2024"},
+  {id:"p2",name:"GateHouse – Additional Works",target:56479,received:0,status:"Review source totals",notes:"The resident summaries record KES 80,000 received; GateHouse actual expenditure exceeds estimate by KES 91,399."},
+  {id:"p3",name:"GateHouse – Outstanding Items",target:12000,received:0,status:"Outstanding",notes:"Wiring & solar outstanding since 2021"},
 ];
 
 const SEED_CONTRIBS = [
-  {id:"c1",projectId:"p1",residentId:"r1",date:"2024-02-15",amount:50000,note:"Contribution"},
-  {id:"c2",projectId:"p1",residentId:"r2",date:"2024-03-15",amount:50000,note:"Contribution"},
-  {id:"c3",projectId:"p1",residentId:"r3",date:"2024-04-20",amount:50000,note:"Contribution"},
-  {id:"c4",projectId:"p1",residentId:"r4",date:"2024-05-10",amount:50000,note:"Contribution"},
-  {id:"c5",projectId:"p1",residentId:"r5",date:"2024-06-01",amount:50000,note:"Contribution"},
-  {id:"c6",projectId:"p1",residentId:"r6",date:"2024-07-15",amount:50000,note:"Contribution"},
-  {id:"c7",projectId:"p1",residentId:"r7",date:"2024-08-01",amount:50000,note:"Contribution"},
-  {id:"c8",projectId:"p1",residentId:"r8",date:"2024-09-01",amount:50000,note:"Contribution"},
-  {id:"c9",projectId:"p2",residentId:"r1",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c10",projectId:"p2",residentId:"r2",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c11",projectId:"p2",residentId:"r3",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c12",projectId:"p2",residentId:"r4",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c13",projectId:"p2",residentId:"r5",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c14",projectId:"p2",residentId:"r6",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c15",projectId:"p2",residentId:"r7",date:"2024-11-05",amount:7059,note:"Contribution"},
-  {id:"c16",projectId:"p2",residentId:"r8",date:"2024-11-05",amount:7106,note:"Contribution"},
+  {id:"c1",projectId:"p1",residentId:"r1",amount:50000,note:"Workbook summary",source:"2026!D38"},
+  {id:"c2",projectId:"p1",residentId:"r2",amount:50000,note:"Workbook summary",source:"2026!K38"},
+  {id:"c3",projectId:"p1",residentId:"r3",amount:50000,note:"Workbook summary",source:"2026!R38"},
+  {id:"c4",projectId:"p1",residentId:"r4",amount:50000,note:"Workbook summary",source:"2026!Y38"},
+  {id:"c5",projectId:"p1",residentId:"r5",amount:50000,note:"Workbook summary",source:"2026!AF38"},
+  {id:"c6",projectId:"p1",residentId:"r6",amount:50000,note:"Workbook summary",source:"2026!AM38"},
+  {id:"c7",projectId:"p1",residentId:"r7",amount:50000,note:"Workbook summary",source:"2026!AT38"},
+  {id:"c8",projectId:"p1",residentId:"r8",amount:50000,note:"Workbook summary",source:"2026!BA38"},
+  {id:"c9",projectId:"p2",residentId:"r1",amount:10000,note:"Workbook summary",source:"2026!D39"},
+  {id:"c10",projectId:"p2",residentId:"r2",amount:10000,note:"Workbook summary",source:"2026!K39"},
+  {id:"c11",projectId:"p2",residentId:"r3",amount:10000,note:"Workbook summary",source:"2026!R39"},
+  {id:"c12",projectId:"p2",residentId:"r4",amount:10000,note:"Workbook summary",source:"2026!Y39"},
+  {id:"c13",projectId:"p2",residentId:"r5",amount:10000,note:"Workbook summary",source:"2026!AF39"},
+  {id:"c14",projectId:"p2",residentId:"r6",amount:10000,note:"Workbook summary",source:"2026!AM39"},
+  {id:"c15",projectId:"p2",residentId:"r7",amount:10000,note:"Workbook summary",source:"2026!AT39"},
+  {id:"c16",projectId:"p2",residentId:"r8",amount:10000,note:"Workbook summary",source:"2026!BA39"},
 ];
-const SEED_REMINDERS = [
-  {id:"rem1",residentId:"r5",date:"2025-03-10",method:"WhatsApp",note:"Sent reminder about February arrears",sentBy:"Estate Manager"},
-  {id:"rem2",residentId:"r5",date:"2025-06-15",method:"Call",note:"Called regarding growing balance",sentBy:"Estate Manager"},
-  {id:"rem3",residentId:"r8",date:"2025-12-01",method:"WhatsApp",note:"Reminded about November payment",sentBy:"Estate Manager"},
-];
+const SEED_REMINDERS = [];
+
+// A transaction affects the running balance unless it is a restated year-opening row.
+const affectsBalance = t => t.type !== "restated";
+
+// Running balance for a resident.
+// `restated` rows RESET the balance rather than adding to it: every annual worksheet is
+// authoritative for its own period, so its b/fwd figure becomes the new starting point.
+// This reproduces the workbook exactly, including its internal year-on-year breaks.
+function runningBalance(transactions) {
+  let run = 0;
+  return [...transactions]
+    .sort((a,b) => a.date.localeCompare(b.date))
+    .map(t => {
+      if (t.type === "restated") run = t.amount;
+      else if (t.type === "reversal") run += Number(t.balanceEffect) || 0;
+      else if (t.type === "payment") run -= t.amount;
+      else run += t.amount;
+      return {...t, run};
+    });
+}
 
 function calcBal(residentId, transactions) {
-  return [...transactions]
-    .filter(t => t.residentId === residentId)
-    .sort((a,b) => a.date.localeCompare(b.date))
-    .reduce((b,t) => t.type === "payment" ? b - t.amount : b + t.amount, 0);
+  const rows = runningBalance(transactions.filter(t => t.residentId === residentId));
+  return rows.length ? rows[rows.length - 1].run : 0;
 }
 
 function hasDuplicateCharge(transactions, residentId, date) {
@@ -210,11 +387,12 @@ function printStatement(resident, rows, balance) {
   const win = window.open("", "_blank", "width=800,height=900");
   if (!win) return;
   const escapeHtml = value => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
-  const charged = rows.filter(t => t.type !== "payment").reduce((s,t) => s + t.amount, 0);
+  const charged = rows.filter(t => t.type === "charge").reduce((s,t) => s + t.amount, 0);
   const paid = rows.filter(t => t.type === "payment").reduce((s,t) => s + t.amount, 0);
+  const adjustments = rows.filter(t => t.type === "reversal").reduce((s,t) => s + (Number(t.balanceEffect) || 0), 0);
   win.document.write(`<!doctype html><html><head><title>Statement - ${escapeHtml(resident.name)}</title><style>
     *{box-sizing:border-box}body{font:12px Arial,sans-serif;color:#102419;padding:32px}header{display:flex;justify-content:space-between;border-bottom:3px solid #1a6b3a;padding-bottom:16px;margin-bottom:22px}h1{font-size:20px;color:#1a6b3a;margin:0}h2{font-size:16px;margin:0 0 4px}.muted{color:#66786c}.balance{border:1px solid #c8d8cb;border-radius:8px;padding:14px 18px;margin-bottom:20px}.amount{font-size:22px;font-weight:800;color:${balance > 0 ? "#c0392b" : balance < 0 ? "#2471a3" : "#1a6b3a"}}table{width:100%;border-collapse:collapse}th{background:#1a6b3a;color:#fff;text-align:left;padding:8px}td{padding:7px 8px;border-bottom:1px solid #e4ede6}th:nth-child(n+3),td:nth-child(n+3){text-align:right}tfoot{font-weight:800;background:#f4f8f5}footer{margin-top:24px;border-top:1px solid #d4e4d7;padding-top:10px;color:#66786c;font-size:10px;display:flex;justify-content:space-between}@media print{body{padding:16px}}
-  </style></head><body><header><div><h1>Lemayian Court</h1><div class="muted">Estate Manager · Account statement</div></div><div><h2>${escapeHtml(resident.name)}</h2><div class="muted">Unit ${escapeHtml(resident.unit)}</div></div></header><div class="balance"><div class="muted">Balance as of ${new Date().toLocaleDateString("en-KE",{day:"numeric",month:"long",year:"numeric"})}</div><div class="amount">${balance > 0 ? `KES ${fmt(balance)} owed` : balance < 0 ? `KES ${fmt(Math.abs(balance))} credit` : "Fully settled"}</div></div><div class="muted" style="margin-bottom:12px">Statement Period: Full history · ${rows.length} transaction${rows.length!==1?"s":""}</div><table><thead><tr><th>Date</th><th>Description</th><th>M-Pesa ref</th><th>Charge</th><th>Payment</th><th>Balance</th></tr></thead><tbody>${rows.map(t => `<tr><td>${escapeHtml(t.date)}</td><td>${escapeHtml(t.note || t.type)}</td><td>${escapeHtml(t.mpesa || "-")}</td><td>${t.type !== "payment" ? `KES ${fmt(t.amount)}` : ""}</td><td>${t.type === "payment" ? `KES ${fmt(t.amount)}` : ""}</td><td>KES ${fmt(Math.abs(t.run))}${t.run < 0 ? " Cr" : ""}</td></tr>`).join("")}</tbody><tfoot><tr><td colspan="3">Totals</td><td>KES ${fmt(charged)}</td><td>KES ${fmt(paid)}</td><td>${balance > 0 ? `KES ${fmt(balance)} owed` : balance < 0 ? `KES ${fmt(Math.abs(balance))} credit` : "Settled"}</td></tr></tfoot></table><footer><span>Generated ${new Date().toLocaleString("en-KE")}</span><span>Lemayian Court · Nairobi, Kenya</span></footer><script>window.onload=function(){window.print();}</script></body></html>`);
+  </style></head><body><header><div><h1>Lemayian Court</h1><div class="muted">Estate Manager · Account statement</div></div><div><h2>${escapeHtml(resident.name)}</h2><div class="muted">Unit ${escapeHtml(resident.unit)}</div></div></header><div class="balance"><div class="muted">Balance as of ${new Date().toLocaleDateString("en-KE",{day:"numeric",month:"long",year:"numeric"})}</div><div class="amount">${balance > 0 ? `KES ${fmt(balance)} owed` : balance < 0 ? `KES ${fmt(Math.abs(balance))} credit` : "Fully settled"}</div></div><div class="muted" style="margin-bottom:12px">Statement Period: Full history · ${rows.length} transaction${rows.length!==1?"s":""}</div><table><thead><tr><th>Date</th><th>Description</th><th>Reference</th><th>Charge</th><th>Payment</th><th>Adjustment</th><th>Balance</th></tr></thead><tbody>${rows.map(t => `<tr><td>${escapeHtml(t.date)}</td><td>${escapeHtml(t.note || t.type)}</td><td>${escapeHtml(t.mpesa || t.id || "-")}</td><td>${t.type === "charge" ? `KES ${fmt(t.amount)}` : ""}</td><td>${t.type === "payment" ? `KES ${fmt(t.amount)}` : ""}</td><td>${t.type === "reversal" ? `KES ${fmt(t.balanceEffect)}` : ""}</td><td>KES ${fmt(Math.abs(t.run))}${t.run < 0 ? " Cr" : ""}</td></tr>`).join("")}</tbody><tfoot><tr><td colspan="3">Totals</td><td>KES ${fmt(charged)}</td><td>KES ${fmt(paid)}</td><td>KES ${fmt(adjustments)}</td><td>${balance > 0 ? `KES ${fmt(balance)} owed` : balance < 0 ? `KES ${fmt(Math.abs(balance))} credit` : "Settled"}</td></tr></tfoot></table><footer><span>Generated ${new Date().toLocaleString("en-KE")}</span><span>Lemayian Court · Nairobi, Kenya</span></footer><script>window.onload=function(){window.print();}</script></body></html>`);
   win.document.close();
 }
 
@@ -380,22 +558,25 @@ function Tour({ step, onNext, onSkip }) {
 
 // ── Receipt ────────────────────────────────────────────────────
 function Receipt({ txn, res, onClose }) {
-  const isDebit = txn.type !== "payment";
+  const isReversal = txn.type === "reversal";
+  const isDebit = txn.type === "charge";
+  const receiptAmount = isReversal ? Math.abs(Number(txn.balanceEffect) || 0) : txn.amount;
   return (
-    <Modal title="Transaction Receipt" onClose={onClose} w={360}>
+    <Modal title={isReversal?"Correction Entry":txn.type==="payment"?"Payment Receipt":"Transaction Record"} onClose={onClose} w={360}>
       <div style={{textAlign:"center",marginBottom:"1.1rem"}}>
         <div style={{width:54,height:54,background:isDebit?"#fff1f0":"#eaf5ed",borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 0.7rem",fontSize:"1.5rem"}}>{isDebit?"📋":"✅"}</div>
-        <div style={{fontSize:"0.75rem",color:"#8a9e91",marginBottom:"0.2rem"}}>{txn.type==="payment" ? "Payment Received" : "Charge Posted"}</div>
-        <div style={{fontSize:"1.9rem",fontWeight:900,color:isDebit?"#c0392b":"#1a6b3a",fontVariantNumeric:"tabular-nums"}}>KES {fmt(txn.amount)}</div>
+        <div style={{fontSize:"0.75rem",color:"#8a9e91",marginBottom:"0.2rem"}}>{isReversal?"Reversal · no funds received":txn.type==="payment"?"Payment recorded manually":"Charge Posted"}</div>
+        <div style={{fontSize:"1.9rem",fontWeight:900,color:isReversal?"#2471a3":isDebit?"#c0392b":"#1a6b3a",fontVariantNumeric:"tabular-nums"}}>KES {fmt(receiptAmount)}</div>
       </div>
       <div style={{background:"#f4f8f5",borderRadius:10,overflow:"hidden"}}>
-            {[ ["Resident",res?.name], ["Unit",res?.unit], ["Date",txn.date], ["Ref",txn.id.slice(0,14)], txn.mpesa ? ["M-Pesa ref",txn.mpesa] : null, ["Description",txn.note], txn.security ? ["Security", `KES ${fmt(txn.security)}`] : null, txn.others ? ["Others", `KES ${fmt(txn.others)}`] : null ].filter(Boolean).map(([k,v],i,a) => (
+            {[ ["Resident",res?.name], ["Unit",res?.unit], ["Date",txn.date], ["Receipt number",txn.type==="payment"?`RCPT-${txn.id}`:null], ["Transaction ID",txn.id], ["M-Pesa ref",txn.mpesa], ["Reverses",txn.reversalOf], ["Correction reason",txn.reason], ["Description",txn.note], ["Security",txn.security?`KES ${fmt(txn.security)}`:null], ["Others",txn.others?`KES ${fmt(txn.others)}`:null] ].filter(([,value])=>value).map(([k,v],i,a) => (
           <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"0.52rem 0.9rem",borderBottom:i<a.length-1?"1px solid #e4ede6":"none"}}>
             <span style={{color:"#6b7f72",fontSize:"0.79rem"}}>{k}</span>
             <span style={{fontWeight:700,fontSize:"0.79rem",color:"#0f2417",maxWidth:200,textAlign:"right"}}>{v}</span>
           </div>
         ))}
       </div>
+      {txn.type==="payment"&&<div style={{fontSize:"0.72rem",color:"#80530e",marginTop:"0.75rem"}}>Manually recorded; payment was not independently verified.</div>}
       <BTN onClick={onClose} style={{width:"100%",justifyContent:"center",marginTop:"1rem"}}>Close</BTN>
     </Modal>
   );
@@ -404,12 +585,12 @@ function Receipt({ txn, res, onClose }) {
 // ══════════════════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════════════════
-function Dashboard({ residents, transactions, setPage, provider }) {
+function Dashboard({ residents, transactions, setPage, provider, canManage=true }) {
   const bals = residents.map(r => ({...r, bal: calcBal(r.id, transactions)}));
     const owed = bals.filter(r => r.bal > 0).reduce((s,r) => s + r.bal, 0);
   const cred = bals.filter(r => r.bal < 0).reduce((s,r) => s+Math.abs(r.bal), 0);
   const paid = transactions.filter(t => t.type==="payment").reduce((s,t) => s+t.amount, 0);
-  const levied = transactions.filter(t => t.type!=="payment").reduce((s,t) => s+t.amount, 0);
+  const levied = transactions.filter(t => t.type==="charge").reduce((s,t) => s+t.amount, 0);
   const rate = levied > 0 ? Math.round((paid/levied)*100) : 0;
   const overdue = bals.filter(r => r.bal > 0).sort((a,b) => b.bal-a.bal);
   // Coverage — levy collected this month vs the security provider's monthly cost
@@ -417,6 +598,8 @@ function Dashboard({ residents, transactions, setPage, provider }) {
   const collectedThisMonth = transactions.filter(t => t.type==="payment" && t.date.startsWith(monthPre)).reduce((s,t) => s+t.amount, 0);
   const providerCost = provider.monthlyCharge || 0;
   const coveragePct = providerCost > 0 ? Math.round((collectedThisMonth/providerCost)*100) : 0;
+  const potentialLevy = residents.length * MONTHLY_TOTAL;
+  const potentialCoveragePct = providerCost > 0 ? (potentialLevy/providerCost)*100 : 0;
   const now = new Date();
   const last6 = Array.from({length:6}, (_,i) => {
     const d = new Date(now); d.setMonth(d.getMonth()-5+i);
@@ -447,7 +630,7 @@ function Dashboard({ residents, transactions, setPage, provider }) {
           </div>
           <div style={{fontSize:"1.4rem",fontWeight:900,color:coveragePct>=100?"#1a6b3a":"#e67e22",fontVariantNumeric:"tabular-nums",lineHeight:1}}>{coveragePct}%</div>
           <div style={{fontSize:"0.71rem",color:"#8a9e91",marginTop:"0.28rem",lineHeight:1.5}}>
-            {residents.length} houses × KES {fmt(MONTHLY_TOTAL)} = KES {fmt(collectedThisMonth)} collected vs KES {fmt(providerCost)} provider cost
+            Potential levy: KES {fmt(potentialLevy)} ({potentialCoveragePct.toFixed(2)}% of provider cost) · Actual payments received this month: KES {fmt(collectedThisMonth)} · Cost: KES {fmt(providerCost)}
           </div>
         </div>
         <div style={{background:"#fff",borderRadius:12,padding:"1rem 1.15rem",border:"1px solid #e2ece4",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
@@ -491,7 +674,7 @@ function Dashboard({ residents, transactions, setPage, provider }) {
               <span style={{color:"#6b7f72"}}>{k}</span><span style={{fontWeight:800,color:c}}>{v}</span>
             </div>
           ))}
-          <div style={{padding:"0.75rem 1rem"}}><BTN v="sec" style={{width:"100%",justifyContent:"center",fontSize:"0.77rem"}} onClick={() => setPage("payments")}>📋 Post This Month's Levy</BTN></div>
+          {canManage && <div style={{padding:"0.75rem 1rem"}}><BTN v="sec" style={{width:"100%",justifyContent:"center",fontSize:"0.77rem"}} onClick={() => setPage("payments")}>📋 Post This Month's Levy</BTN></div>}
         </div>
       </div>
       {overdue.length > 0 && (
@@ -532,7 +715,7 @@ function Dashboard({ residents, transactions, setPage, provider }) {
 // ══════════════════════════════════════════════════════════════
 // RESIDENTS
 // ══════════════════════════════════════════════════════════════
-function Residents({ residents, setResidents, transactions, setTransactions, contribs, setContribs, toast }) {
+function Residents({ residents, setResidents, transactions, setTransactions, contribs, setContribs, authMode, authToken, authUser, toast }) {
   const [view, setView] = useState(null);
   const [edit, setEdit] = useState(null);
   const [add, setAdd] = useState(false);
@@ -552,7 +735,7 @@ function Residents({ residents, setResidents, transactions, setTransactions, con
     setContribs(p => removeResidentData(r.id, [], [], p).contribs);
     toast(`${r.name} removed`,"warn");
   };
-  if (view) return <Statement resident={view} transactions={transactions} setTransactions={setTransactions} onBack={() => setView(null)} toast={toast}/>;
+  if (view) return <Statement resident={view} transactions={transactions} setTransactions={setTransactions} authMode={authMode} authToken={authToken} authUser={authUser} onBack={() => setView(null)} toast={toast}/>;
   return (
     <div>
       <div style={{...FL,justifyContent:"space-between",marginBottom:"1.35rem"}}>
@@ -563,6 +746,7 @@ function Residents({ residents, setResidents, transactions, setTransactions, con
         {residents.map(r => {
           const bal = calcBal(r.id, transactions);
           const pmts = transactions.filter(t => t.residentId===r.id && t.type==="payment").length;
+          const hasTransactions = transactions.some(t => t.residentId===r.id);
           return (
             <div key={r.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",padding:"0.95rem 1.15rem",...FL,gap:"1rem",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               <div style={{width:42,height:42,borderRadius:"50%",background:`hsl(${(r.name.charCodeAt(0)*17)%360},42%,87%)`,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:900,color:"#0f2417",fontSize:"1rem",flexShrink:0}}>{r.name[0].toUpperCase()}</div>
@@ -575,7 +759,7 @@ function Residents({ residents, setResidents, transactions, setTransactions, con
                 {bal>0?<BDG c="#c0392b" bg="#fff1f0">KES {fmt(bal)} owed</BDG>:bal<0?<BDG c="#2471a3" bg="#eaf3fb">+KES {fmt(Math.abs(bal))}</BDG>:<BDG c="#1a6b3a" bg="#eaf5ed">✓</BDG>}
                 <BTN v="sec" sz="sm" onClick={() => setView(r)}>Statement</BTN>
                 <BTN v="gho" sz="sm" onClick={() => { setEdit(r.id); setFm({name:r.name,unit:r.unit,phone:r.phone||"",notes:r.notes||""}); }}><Ico n="edit" sz={13}/></BTN>
-                <BTN v="dan" sz="sm" onClick={() => del(r)}><Ico n="trash" sz={13}/></BTN>
+                <BTN v="dan" sz="sm" disabled={hasTransactions} title={hasTransactions?"Residents with posted transactions cannot be removed":"Remove resident"} onClick={() => del(r)}><Ico n="trash" sz={13}/></BTN>
               </div>
             </div>
           );
@@ -599,7 +783,7 @@ function Residents({ residents, setResidents, transactions, setTransactions, con
 }
 
 // ── Statement ──────────────────────────────────────────────────
-function Statement({ resident, transactions, setTransactions, onBack, toast }) {
+function Statement({ resident, transactions, setTransactions, authMode, authToken, authUser, onBack, toast }) {
   const [showPay, setShowPay] = useState(false);
   const [showChg, setShowChg] = useState(false);
   const [rec, setRec] = useState(null);
@@ -607,13 +791,14 @@ function Statement({ resident, transactions, setTransactions, onBack, toast }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilter, setShowFilter] = useState(false);
+  const [correctionTxn, setCorrectionTxn] = useState(null);
+  const [correctionForm, setCorrectionForm] = useState({mode:"reverse",reason:"",date:today(),type:"charge",amount:"",security:"",others:"",note:""});
   const [pFm, setPFm] = useState({date:today(),amount:"",note:"Payment",mpesa:""});
   const [cFm, setCFm] = useState({date:today(),security:MONTHLY_SECURITY,others:MONTHLY_OTHERS,note:"Monthly levy"});
   const {confirm, dialog} = useConfirm();
-  const myT = [...transactions].filter(t => t.residentId===resident.id).sort((a,b) => a.date.localeCompare(b.date));
-  let run = 0;
-  const rows = myT.map(t => { if(t.type==="payment") run-=t.amount; else run+=t.amount; return {...t,run}; });
-  const trueBal = run;
+  const myT = [...transactions].filter(t => t.residentId===resident.id);
+  const rows = runningBalance(myT);
+  const trueBal = rows.length ? rows[rows.length-1].run : 0;
   const shown = rows.filter(t => {
     if (q && !t.note?.toLowerCase().includes(q.toLowerCase()) && !t.date.includes(q) && !String(t.amount).includes(q)) return false;
     if (dateFrom && t.date < dateFrom) return false;
@@ -622,23 +807,57 @@ function Statement({ resident, transactions, setTransactions, onBack, toast }) {
   });
   const isFiltered = Boolean(q || dateFrom || dateTo);
   const exportThisCSV = () => {
-    exportCSV(`statement-${resident.name.replace(/\s+/g,"-")}-${today()}.csv`, ["Date","Description","Type","M-Pesa reference","Charge","Payment","Balance"], shown.map(t => [t.date,t.note,t.type,t.mpesa || "",t.type!=="payment"?t.amount:"",t.type==="payment"?t.amount:"",t.run]));
+    exportCSV(`statement-${resident.name.replace(/\s+/g,"-")}-${today()}.csv`, ["Date","Description","Type","M-Pesa reference","Charge","Payment","Adjustment","Balance"], shown.map(t => [t.date,t.note,t.type,t.mpesa || "",t.type==="charge"?t.amount:"",t.type==="payment"?t.amount:"",t.type==="reversal"?t.balanceEffect:"",t.run]));
     toast("Statement exported to CSV");
   };
   const addPay = async () => {
-    const a = parseFloat(pFm.amount);
-    if (!a||a<=0) { toast("Enter valid amount","error"); return; }
+    const a = Number(pFm.amount);
+    if (!Number.isSafeInteger(a)||a<=0) { toast("Enter a positive whole-KES amount","error"); return; }
     if (a > trueBal && trueBal > 0 && !await confirm(`This payment (KES ${fmt(a)}) is more than the balance owed (KES ${fmt(trueBal)}).\n\nKES ${fmt(a-trueBal)} will be in credit. Continue?`)) return;
     setTransactions(p => [...p, {id:uid(),residentId:resident.id,date:pFm.date,type:"payment",amount:a,security:0,others:0,note:pFm.note,mpesa:pFm.mpesa.trim().toUpperCase()}]);
     toast(`KES ${fmt(a)} recorded${pFm.mpesa ? ` · M-Pesa ${pFm.mpesa.toUpperCase()}` : ""}`); setPFm({date:today(),amount:"",note:"Payment",mpesa:""}); setShowPay(false);
   };
   const addChg = () => {
-    const s=parseFloat(cFm.security)||0, o=parseFloat(cFm.others)||0;
+    const s=Number(cFm.security)||0, o=Number(cFm.others)||0;
+    if (!Number.isSafeInteger(s)||!Number.isSafeInteger(o)||s<0||o<0) { toast("Charge components must be whole KES","error"); return; }
     if (s + o <= 0) { toast("Enter a charge amount","error"); return; }
     setTransactions(p => [...p, {id:uid(),residentId:resident.id,date:cFm.date,type:"charge",amount:s+o,security:s,others:o,note:cFm.note}]);
     toast(`Charge KES ${fmt(s+o)} posted`); setCFm({date:today(),security:MONTHLY_SECURITY,others:MONTHLY_OTHERS,note:"Monthly levy"}); setShowChg(false);
   };
-  const delT = async (t) => { if (!await confirm("Delete this transaction?\n\nThis cannot be undone.")) return; setTransactions(p => p.filter(x => x.id!==t.id)); toast("Deleted","warn"); };
+  const openCorrection = transaction => {
+    setCorrectionTxn(transaction);
+    setCorrectionForm({mode:"reverse",reason:"",date:transaction.date,type:transaction.type,amount:String(transaction.amount),security:String(transaction.security||0),others:String(transaction.others||0),note:transaction.note||""});
+  };
+  const saveCorrection = async () => {
+    const reason=correctionForm.reason.trim();
+    if (!correctionTxn || reason.length<5) { toast("Enter a correction reason of at least 5 characters","error"); return; }
+    let replacement;
+    if (correctionForm.mode === "replace") {
+      const amount=Number(correctionForm.amount), security=Number(correctionForm.security)||0, others=Number(correctionForm.others)||0;
+      if (!Number.isSafeInteger(amount)||amount<=0||!/^\d{4}-\d{2}-\d{2}$/.test(correctionForm.date)) { toast("Enter a valid date and positive whole-KES amount","error"); return; }
+      if (correctionForm.type === "charge" && (!Number.isSafeInteger(security)||!Number.isSafeInteger(others)||security<0||others<0||security+others!==amount)) { toast("Charge split must be whole KES and match the amount","error"); return; }
+      replacement={residentId:resident.id,date:correctionForm.date,type:correctionForm.type,amount,security:correctionForm.type==="charge"?security:0,others:correctionForm.type==="charge"?others:0,note:correctionForm.note.trim()};
+    }
+    if (!await confirm(`Preserve transaction ${correctionTxn.id} and record a ${replacement?"reversal plus corrected replacement":"reversal"}?\n\nReason: ${reason}`)) return;
+    try {
+      let additions, correctionId;
+      if (authMode === "signed-in") {
+        const result=await apiRequest(`/transactions/${encodeURIComponent(correctionTxn.id)}/corrections`,{method:"POST",body:JSON.stringify({reason,...(replacement?{replacement}:{})})},authToken);
+        additions=result.transactions; correctionId=result.correctionId;
+      } else {
+        correctionId=uid();
+        const now=new Date().toISOString();
+        additions=[{id:uid(),residentId:resident.id,date:today(),type:"reversal",amount:Number(correctionTxn.amount),balanceEffect:correctionTxn.type==="payment"?Number(correctionTxn.amount):-Number(correctionTxn.amount),note:`Reversal of ${correctionTxn.id}`,reversalOf:correctionTxn.id,correctionId,reason,recordedBy:authUser?.name||"Local offline user",enteredAt:now}];
+        if (replacement) additions.push({...replacement,id:uid(),correctionId,corrects:correctionTxn.id,reason,recordedBy:authUser?.name||"Local offline user",enteredAt:now});
+      }
+      const nextTransactions=[...transactions,...additions];
+      setTransactions(nextTransactions);
+      const newBalance=calcBal(resident.id,nextTransactions);
+      const balanceLabel=newBalance<0?`KES ${fmt(Math.abs(newBalance))} credit`:newBalance>0?`KES ${fmt(newBalance)} owed`:"settled";
+      toast(`Correction recorded · new balance ${balanceLabel}`);
+      setCorrectionTxn(null);
+    } catch (error) { toast(error.message||"Could not record correction","error"); }
+  };
   return (
     <div>
       <div style={{...FL,gap:"0.7rem",marginBottom:"1.2rem",flexWrap:"wrap"}}>
@@ -668,25 +887,27 @@ function Statement({ resident, transactions, setTransactions, onBack, toast }) {
         {isFiltered && <span style={{fontSize:"0.78rem",color:"#1a6b3a",fontWeight:700}}>Showing {shown.length} of {rows.length} transactions</span>}
       </div>}
       <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",overflow:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.79rem",minWidth:560}}>
-          <thead><tr style={{background:"#f4f8f5"}}>{["Date","Description","Charge","Payment","Balance",""].map((h,i) => <th key={i} style={{padding:"0.52rem 0.78rem",textAlign:i>=2&&i<5?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.79rem",minWidth:650}}>
+          <thead><tr style={{background:"#f4f8f5"}}>{["Date","Description","Charge","Payment","Adjustment","Balance",""].map((h,i) => <th key={i} style={{padding:"0.52rem 0.78rem",textAlign:i>=2&&i<6?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
           <tbody>
-            {shown.length===0 && <tr><td colSpan={6} style={{textAlign:"center",padding:"2.5rem",color:"#8a9e91",fontStyle:"italic"}}>{q?"No matches":"No transactions yet"}</td></tr>}
+            {shown.length===0 && <tr><td colSpan={7} style={{textAlign:"center",padding:"2.5rem",color:"#8a9e91",fontStyle:"italic"}}>{q?"No matches":"No transactions yet"}</td></tr>}
             {shown.map(t => (
               <tr key={t.id} style={{borderBottom:"1px solid #eef3ef",cursor:"pointer"}} onClick={() => setRec(t)}>
                 <td style={{padding:"0.48rem 0.78rem",color:"#4a6352",whiteSpace:"nowrap"}}>{t.date}</td>
                 <td style={{padding:"0.48rem 0.78rem",color:"#0f2417",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.note}</td>
-                <td style={{padding:"0.48rem 0.78rem",textAlign:"right",color:"#c0392b",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type!=="payment"?`KES ${fmt(t.amount)}`:""}</td>
+                <td style={{padding:"0.48rem 0.78rem",textAlign:"right",color:"#c0392b",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="charge"?`KES ${fmt(t.amount)}`:""}</td>
                 <td style={{padding:"0.48rem 0.78rem",textAlign:"right",color:"#1a6b3a",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="payment"?`KES ${fmt(t.amount)}`:""}</td>
+                <td style={{padding:"0.48rem 0.78rem",textAlign:"right",color:t.balanceEffect<0?"#c0392b":"#2471a3",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="reversal"?`KES ${fmt(t.balanceEffect)}`:""}</td>
                 <td style={{padding:"0.48rem 0.78rem",textAlign:"right",fontWeight:800,fontVariantNumeric:"tabular-nums",color:t.run>0?"#c0392b":t.run<0?"#2471a3":"#1a6b3a"}}>KES {fmt(Math.abs(t.run))}{t.run<0?" Cr":""}</td>
-                <td style={{padding:"0.48rem 0.6rem",textAlign:"right"}} onClick={e => e.stopPropagation()}><BTN v="dan" sz="sm" onClick={() => delT(t)} style={{padding:"3px 6px"}}><Ico n="trash" sz={11}/></BTN></td>
+                <td style={{padding:"0.48rem 0.6rem",textAlign:"right"}} onClick={e => e.stopPropagation()}>{["charge","payment"].includes(t.type)&&<BTN v="gho" sz="sm" title="Reverse or correct this posted transaction" onClick={() => openCorrection(t)} style={{padding:"3px 6px"}}>Correct</BTN>}</td>
               </tr>
             ))}
           </tbody>
           {shown.length>0 && <tfoot><tr style={{background:"#f4f8f5",fontWeight:900}}>
             <td colSpan={2} style={{padding:"0.58rem 0.78rem",color:"#0f2417"}}>Totals{isFiltered?" (filtered)":""}</td>
-            <td style={{padding:"0.58rem 0.78rem",textAlign:"right",color:"#c0392b",fontVariantNumeric:"tabular-nums"}}>KES {fmt(shown.filter(t=>t.type!=="payment").reduce((s,t)=>s+t.amount,0))}</td>
+            <td style={{padding:"0.58rem 0.78rem",textAlign:"right",color:"#c0392b",fontVariantNumeric:"tabular-nums"}}>KES {fmt(shown.filter(t=>t.type==="charge").reduce((s,t)=>s+t.amount,0))}</td>
             <td style={{padding:"0.58rem 0.78rem",textAlign:"right",color:"#1a6b3a",fontVariantNumeric:"tabular-nums"}}>KES {fmt(shown.filter(t=>t.type==="payment").reduce((s,t)=>s+t.amount,0))}</td>
+            <td style={{padding:"0.58rem 0.78rem",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>KES {fmt(shown.filter(t=>t.type==="reversal").reduce((s,t)=>s+(Number(t.balanceEffect)||0),0))}</td>
             <td style={{padding:"0.58rem 0.78rem",textAlign:"right",color:trueBal>0?"#c0392b":trueBal<0?"#2471a3":"#1a6b3a",fontVariantNumeric:"tabular-nums"}}>{isFiltered?"—":`KES ${fmt(Math.abs(trueBal))}${trueBal<0?" Cr":""}`}</td>
             <td/>
           </tr></tfoot>}
@@ -718,6 +939,27 @@ function Statement({ resident, transactions, setTransactions, onBack, toast }) {
           <BTN v="sec" onClick={() => setShowChg(false)}>Cancel</BTN>
           <BTN onClick={addChg}><Ico n="plus" sz={13}/> Post Charge</BTN>
         </div>
+      </Modal>}
+      {correctionTxn && <Modal title="Correct or reverse transaction" onClose={() => setCorrectionTxn(null)} w={520}>
+        <div style={{background:"#f4f8f5",borderRadius:8,padding:"0.7rem 0.85rem",fontSize:"0.8rem",lineHeight:1.55,marginBottom:"0.9rem"}}>
+          Original remains on the ledger: <b>{correctionTxn.date} · {correctionTxn.note} · KES {fmt(correctionTxn.amount)}</b> ({correctionTxn.type}). A correction adds linked entries; it never edits or removes this transaction.
+        </div>
+        <FLD label="Correction reason"><TXA rows={3} value={correctionForm.reason} onChange={e=>setCorrectionForm(p=>({...p,reason:e.target.value}))} placeholder="Explain why the posted transaction is being corrected"/></FLD>
+        <FLD label="Action"><SEL value={correctionForm.mode} onChange={e=>setCorrectionForm(p=>({...p,mode:e.target.value}))}><option value="reverse">Reverse only</option><option value="replace">Reverse and replace with corrected entry</option></SEL></FLD>
+        {correctionForm.mode==="replace" && <>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}>
+            <FLD label="Corrected type"><SEL value={correctionForm.type} onChange={e=>setCorrectionForm(p=>({...p,type:e.target.value}))}><option value="charge">Charge</option><option value="payment">Payment</option></SEL></FLD>
+            <FLD label="Transaction date"><INP type="date" value={correctionForm.date} onChange={e=>setCorrectionForm(p=>({...p,date:e.target.value}))}/></FLD>
+            <FLD label="Amount (KES)"><INP type="number" min="1" step="1" value={correctionForm.amount} onChange={e=>setCorrectionForm(p=>({...p,amount:e.target.value}))}/></FLD>
+            {correctionForm.type==="charge" && <>
+              <FLD label="Security (KES)"><INP type="number" min="0" step="1" value={correctionForm.security} onChange={e=>setCorrectionForm(p=>({...p,security:e.target.value}))}/></FLD>
+              <FLD label="Others (KES)"><INP type="number" min="0" step="1" value={correctionForm.others} onChange={e=>setCorrectionForm(p=>({...p,others:e.target.value}))}/></FLD>
+            </>}
+          </div>
+          <FLD label="Corrected description"><INP value={correctionForm.note} onChange={e=>setCorrectionForm(p=>({...p,note:e.target.value}))}/></FLD>
+        </>}
+        {authMode==="offline" && <div style={{fontSize:"0.75rem",color:"#80530e",marginBottom:"0.8rem"}}>Offline demo correction is stored locally and is not a server audit record.</div>}
+        <div style={{...FL,justifyContent:"flex-end",gap:"0.65rem"}}><BTN v="sec" onClick={()=>setCorrectionTxn(null)}>Cancel</BTN><BTN onClick={saveCorrection}><Ico n="check" sz={13}/> Confirm Correction</BTN></div>
       </Modal>}
       {dialog}
     </div>
@@ -844,6 +1086,9 @@ function Projects({ projects, setProjects, contribs, setContribs, residents, toa
         <div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Projects</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Special projects with funding targets</p></div>
         <BTN onClick={() => { setPFm({name:"",target:"",notes:""}); setAddP(true); }}><Ico n="plus" sz={15}/> New Project</BTN>
       </div>
+      <div style={{background:"#fff8ec",border:"1px solid #f0d5a8",borderRadius:10,padding:"0.8rem 0.95rem",marginBottom:"1rem",fontSize:"0.8rem",color:"#80530e",lineHeight:1.6}}>
+        Workbook evidence: estimated GateHouse costs KES {fmt(WORKBOOK_GATEHOUSE.estimatedTotal)}; actual expenditure KES {fmt(WORKBOOK_GATEHOUSE.actualTotal)}; variance KES {fmt(WORKBOOK_GATEHOUSE.overspend)}. The resident summaries separately record KES 80,000 for Additional Works. These are different accounting measures.
+      </div>
       {projects.length===0 && <div style={{textAlign:"center",padding:"3.5rem 2rem",background:"#fff",borderRadius:12,border:"1px solid #e2ece4",color:"#8a9e91"}}><div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>🔨</div><div style={{fontWeight:700,color:"#4a6352",marginBottom:"0.4rem"}}>No projects yet</div><div style={{fontSize:"0.84rem"}}>Create a project to track collective contributions.</div></div>}
       <div style={{display:"grid",gap:"0.9rem"}}>
         {projects.map(proj => {
@@ -858,7 +1103,7 @@ function Projects({ projects, setProjects, contribs, setContribs, residents, toa
                   <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:"0.69rem",color:"#6b7f72",textTransform:"uppercase",fontWeight:800,letterSpacing:"0.05em"}}>Target</div><div style={{fontWeight:900,fontVariantNumeric:"tabular-nums",color:"#0f2417"}}>KES {fmt(proj.target)}</div></div>
                 </div>
                 <div style={{height:10,background:"#e8f0eb",borderRadius:99,overflow:"hidden",marginBottom:"0.5rem"}}><div style={{height:"100%",width:`${pct}%`,background:pct>=100?"#1a6b3a":pct>=60?"#27ae60":"#f39c12",borderRadius:99}}/></div>
-                <div style={{...FL,justifyContent:"space-between",fontSize:"0.74rem",color:"#6b7f72",marginBottom:"0.85rem"}}><span><b style={{color:"#1a6b3a"}}>KES {fmt(coll)}</b> collected ({pct.toFixed(1)}%)</span><span>{proj.target>coll?`KES ${fmt(proj.target-coll)} remaining`:"🎉 Fully funded"}</span></div>
+                <div style={{...FL,justifyContent:"space-between",fontSize:"0.74rem",color:"#6b7f72",marginBottom:"0.85rem"}}><span><b style={{color:"#1a6b3a"}}>KES {fmt(coll)}</b> received from resident summaries ({pct.toFixed(1)}%)</span><span>{proj.target>coll?`KES ${fmt(proj.target-coll)} remaining`:coll>proj.target?`KES ${fmt(coll-proj.target)} above target`:"Target met"}</span></div>
                 <div style={{...FL,justifyContent:"space-between"}}>
                   <BDG c="#1a6b3a" bg="#eaf5ed">{pc.length} contribution{pc.length!==1?"s":""}</BDG>
                   <div style={{...FL,gap:"0.5rem"}}><BTN v="sec" sz="sm" onClick={() => { setCFm({residentId:"",date:today(),amount:"",note:"Contribution"}); setAddC(proj.id); }}>+ Contribution</BTN><BTN v="dan" sz="sm" onClick={() => delP(proj)}><Ico n="trash" sz={12}/></BTN></div>
@@ -867,12 +1112,26 @@ function Projects({ projects, setProjects, contribs, setContribs, residents, toa
               {pc.length>0 && <div style={{borderTop:"1px solid #eef3ef",overflow:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.77rem"}}>
                   <thead><tr style={{background:"#f4f8f5"}}>{["Date","Resident","Amount"].map(h => <th key={h} style={{padding:"0.38rem 0.9rem",textAlign:h==="Amount"?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
-                  <tbody>{pc.sort((a,b)=>b.date.localeCompare(a.date)).map(c => { const r=residents.find(x=>x.id===c.residentId); return <tr key={c.id} style={{borderBottom:"1px solid #eef3ef"}}><td style={{padding:"0.38rem 0.9rem",color:"#4a6352"}}>{c.date}</td><td style={{padding:"0.38rem 0.9rem",fontWeight:700}}>{r?.name}</td><td style={{padding:"0.38rem 0.9rem",textAlign:"right",color:"#1a6b3a",fontWeight:800,fontVariantNumeric:"tabular-nums"}}>KES {fmt(c.amount)}</td></tr>; })}</tbody>
+                  <tbody>{pc.sort((a,b)=>(b.date||b.source||"").localeCompare(a.date||a.source||"")).map(c => { const r=residents.find(x=>x.id===c.residentId); return <tr key={c.id} style={{borderBottom:"1px solid #eef3ef"}}><td style={{padding:"0.38rem 0.9rem",color:"#4a6352"}}>{c.date || c.source || "Workbook summary"}</td><td style={{padding:"0.38rem 0.9rem",fontWeight:700}}>{r?.name}</td><td style={{padding:"0.38rem 0.9rem",textAlign:"right",color:"#1a6b3a",fontWeight:800,fontVariantNumeric:"tabular-nums"}}>KES {fmt(c.amount)}</td></tr>; })}</tbody>
                 </table>
               </div>}
             </div>
           );
         })}
+      </div>
+      <div style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,overflow:"hidden",marginTop:"1rem"}}>
+        <div style={{padding:"0.8rem 1rem",borderBottom:"1px solid #e2ece4",fontWeight:800,color:"#0f2417",fontSize:"0.88rem"}}>GateHouse expenditure detail · source rows 4–22</div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.77rem",minWidth:600}}>
+          <thead><tr style={{background:"#f4f8f5"}}>{["Date","Description","Estimated","Actual","Source / remarks"].map((heading,index)=><th key={heading} style={{padding:"0.48rem 0.75rem",textAlign:index>1&&index<4?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase"}}>{heading}</th>)}</tr></thead>
+          <tbody>{WORKBOOK_GATEHOUSE_ITEMS.map(item=><tr key={item.row} style={{borderBottom:"1px solid #eef3ef"}}>
+            <td style={{padding:"0.46rem 0.75rem",whiteSpace:"nowrap"}}>{item.date}</td>
+            <td style={{padding:"0.46rem 0.75rem",fontWeight:700}}>{item.description}</td>
+            <td style={{padding:"0.46rem 0.75rem",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{item.estimated===null?"—":`KES ${fmt(item.estimated)}`}</td>
+            <td style={{padding:"0.46rem 0.75rem",textAlign:"right",fontWeight:800,fontVariantNumeric:"tabular-nums"}}>KES {fmt(item.actual)}</td>
+            <td style={{padding:"0.46rem 0.75rem",color:"#6b7f72"}}>{item.source}{item.remarks?` · ${item.remarks}`:""}</td>
+          </tr>)}</tbody>
+          <tfoot><tr style={{background:"#f4f8f5",fontWeight:900}}><td colSpan={2} style={{padding:"0.55rem 0.75rem"}}>Workbook total · variance KES {fmt(WORKBOOK_GATEHOUSE.overspend)}</td><td style={{padding:"0.55rem 0.75rem",textAlign:"right"}}>KES {fmt(WORKBOOK_GATEHOUSE.estimatedTotal)}</td><td style={{padding:"0.55rem 0.75rem",textAlign:"right"}}>KES {fmt(WORKBOOK_GATEHOUSE.actualTotal)}</td><td style={{padding:"0.55rem 0.75rem"}}>GateHouse!D26:F26</td></tr></tfoot>
+        </table></div>
       </div>
       {addP && <Modal title="New Project" onClose={() => setAddP(false)}>
         <FLD label="Project Name"><INP value={pFm.name} onChange={e=>setPFm(p=>({...p,name:e.target.value}))} placeholder="e.g. Perimeter Wall" autoFocus/></FLD>
@@ -894,12 +1153,12 @@ function Projects({ projects, setProjects, contribs, setContribs, residents, toa
 // ══════════════════════════════════════════════════════════════
 // REPORTS
 // ══════════════════════════════════════════════════════════════
-function Reports({ residents, transactions }) {
+function Reports({ residents, transactions, provider, providerPayments }) {
   const yrs = [...new Set(transactions.map(t=>t.date.slice(0,4)))].sort().reverse();
   const [yr, setYr] = useState(yrs[0]||"2025");
   const mo = MONTHS.map((m,mi) => {
     const pre = `${yr}-${String(mi+1).padStart(2,"0")}`;
-    const ch = transactions.filter(t=>t.date.startsWith(pre)&&t.type!=="payment").reduce((s,t)=>s+t.amount,0);
+    const ch = transactions.filter(t=>t.date.startsWith(pre)&&t.type==="charge").reduce((s,t)=>s+t.amount,0);
     const pa = transactions.filter(t=>t.date.startsWith(pre)&&t.type==="payment").reduce((s,t)=>s+t.amount,0);
     return {m,ch,pa,diff:ch-pa};
   });
@@ -907,7 +1166,14 @@ function Reports({ residents, transactions }) {
   const rate = tCh>0 ? Math.round((tPa/tCh)*100) : 0;
   const mx = Math.max(...mo.flatMap(m=>[m.ch,m.pa]),1);
   const exportReport = () => exportCSV(`lemayian-court-report-${yr}.csv`,["Month","Levied","Collected","Deficit","Rate %"],mo.map(m => [`${m.m} ${yr}`,m.ch,m.pa,m.diff,m.ch>0?Math.round((m.pa/m.ch)*100):""]));
+  const providerYearPayments=providerPayments.filter(item=>String(item.date||"").startsWith(yr));
+  const providerYearTotal=providerYearPayments.reduce((sum,item)=>sum+(Number(item.amount)||0),0);
+  const exportProviderReport=()=>exportCSV(`lemayian-provider-payments-${yr}.csv`,["Date","Billing period","Amount","Method","Reference","Status","Verification","Recorded by","Notes"],providerYearPayments.map(item=>[item.date,item.billingPeriod,item.amount,item.method,item.reference,item.status,item.verification,item.recordedBy?.name||item.recordedBy,item.notes]));
   const bals = residents.map(r => ({...r, paid:transactions.filter(t=>t.residentId===r.id&&t.type==="payment").reduce((s,t)=>s+t.amount,0), bal:calcBal(r.id,transactions)}));
+  const recon = reconcile(residents, transactions);
+  const mismatches = recon.filter(r => r.status === "mismatch");
+  const openingConflicts = residents.filter(r => WORKBOOK_OPENING_2026[r.id] !== REQUESTED_OPENING_2026[r.id]);
+  const yearBreaks = workbookYearBreaks();
   return (
     <div>
       <div style={{...FL,justifyContent:"space-between",marginBottom:"1.35rem",flexWrap:"wrap",gap:"0.7rem"}}>
@@ -925,6 +1191,63 @@ function Reports({ residents, transactions }) {
             </div>
           ))}
         </div>
+      </div>
+      {openingConflicts.length > 0 && <div role="status" style={{background:"#fff8ec",border:"1px solid #f0d5a8",borderRadius:10,padding:"0.75rem 0.95rem",marginBottom:"1.1rem",fontSize:"0.8rem",color:"#80530e",lineHeight:1.6}}>
+        <b>Opening balance target conflict:</b> {openingConflicts.map(r => `${r.name}: requested KES ${fmt(REQUESTED_OPENING_2026[r.id])}, workbook KES ${fmt(WORKBOOK_OPENING_2026[r.id])}`).join("; ")}. The workbook value is retained in the ledger and used for reconciliation.
+      </div>}
+      {yearBreaks.length > 0 && <div style={{background:"#fff8ec",border:"1px solid #f0d5a8",borderRadius:12,overflow:"hidden",marginBottom:"1.1rem"}}>
+        <div style={{padding:"0.7rem 1rem",background:"#fff3dc",fontWeight:800,color:"#80530e",fontSize:"0.84rem"}}>Historical carry-forward differences · {yearBreaks.length} source discrepancy{yearBreaks.length!==1?"ies":""}</div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.76rem",minWidth:520}}>
+          <thead><tr>{["Resident","From","Previous closing","To","Workbook opening","Difference"].map((h,i)=><th key={h} style={{padding:"0.42rem 0.7rem",textAlign:i>1?"right":"left",color:"#80530e",fontWeight:800,fontSize:"0.67rem",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
+          <tbody>{yearBreaks.map((item,index)=>{const resident=residents.find(r=>r.id===item.residentId); return <tr key={`${item.residentId}-${item.to}-${index}`} style={{borderTop:"1px solid #f0d5a8"}}>
+            <td style={{padding:"0.42rem 0.7rem",fontWeight:700}}>{resident?.name || item.residentId}</td><td style={{padding:"0.42rem 0.7rem"}}>{item.from}</td>
+            <td style={{padding:"0.42rem 0.7rem",textAlign:"right"}}>KES {fmt(item.previousClosing)}</td><td style={{padding:"0.42rem 0.7rem"}}>{item.to}</td>
+            <td style={{padding:"0.42rem 0.7rem",textAlign:"right"}}>KES {fmt(item.thisOpening)}</td><td style={{padding:"0.42rem 0.7rem",textAlign:"right",fontWeight:800}}>KES {fmt(item.difference)}</td>
+          </tr>;})}</tbody>
+        </table></div>
+      </div>}
+      <div style={{background:"#fff",borderRadius:12,border:`1px solid ${mismatches.length?"#f5c5c2":"#e2ece4"}`,overflow:"hidden",marginBottom:"1.1rem"}}>
+        <div style={{...FL,justifyContent:"space-between",padding:"0.75rem 1rem",borderBottom:"1px solid #e2ece4",background:mismatches.length?"#fff8f7":"#f4f8f5"}}>
+          <span style={{fontWeight:800,color:"#0f2417",fontSize:"0.86rem"}}>Reconciliation vs. workbook — 2026</span>
+          {mismatches.length===0
+            ? <BDG c="#1a6b3a" bg="#eaf5ed">✓ All 8 residents reconciled</BDG>
+            : <BDG c="#c0392b" bg="#fff1f0">{mismatches.length} mismatch{mismatches.length!==1?"es":""}</BDG>}
+        </div>
+        <div style={{overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.79rem",minWidth:600}}>
+            <thead><tr style={{background:"#f4f8f5"}}>{["Resident","Opening","Charges","Payments","Adjustments","Calculated","Workbook","Diff"].map((h,i)=><th key={h} style={{padding:"0.48rem 0.88rem",textAlign:i===0?"left":"right",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+            <tbody>
+              {recon.map(r => (
+                <tr key={r.id} style={{borderBottom:"1px solid #eef3ef"}}>
+                  <td style={{padding:"0.48rem 0.88rem",fontWeight:700}}>{r.name}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#4a6352"}}>KES {fmt(r.opening)}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#c0392b"}}>KES {fmt(r.charges)}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#1a6b3a"}}>KES {fmt(r.payments)}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>KES {fmt(r.adjustments)}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right",fontWeight:800,fontVariantNumeric:"tabular-nums"}}>KES {fmt(r.calculated)}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right",fontVariantNumeric:"tabular-nums",color:"#4a6352"}}>KES {fmt(r.expected)}</td>
+                  <td style={{padding:"0.48rem 0.88rem",textAlign:"right"}}>{r.status==="reconciled"?<BDG c="#1a6b3a" bg="#eaf5ed">✓ 0</BDG>:<BDG c="#c0392b" bg="#fff1f0">KES {fmt(r.difference)}</BDG>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{padding:"0.6rem 1rem",fontSize:"0.74rem",color:"#8a9e91",borderTop:"1px solid #eef3ef",lineHeight:1.6}}>
+          Closing = Opening + Charges − Payments + Adjustments. Imported from <b>Lemayian Court Accounts 2026.xlsx</b> — every imported transaction carries its source worksheet row.
+        </div>
+      </div>
+      <div style={{background:"#fff",border:"1px solid #f0d5a8",borderRadius:12,overflow:"hidden",marginBottom:"1.1rem"}}>
+        <div style={{padding:"0.75rem 1rem",borderBottom:"1px solid #f0d5a8",background:"#fff8ec",fontWeight:800,color:"#80530e",fontSize:"0.86rem"}}>Payment Details review · supporting evidence only</div>
+        <div style={{padding:"0.65rem 1rem",fontSize:"0.76rem",color:"#80530e",lineHeight:1.55}}>The two KES 29,000 references do not match annual ledger credits by date and are excluded from resident balances to avoid double-counting. The KES 700 Grass planting and Weeding entries are expense notes, not resident payments.</div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.77rem",minWidth:560}}>
+          <thead><tr style={{background:"#f4f8f5"}}>{["Date","Type","Amount","Reference / detail","Disposition"].map((h,i)=><th key={h} style={{padding:"0.46rem 0.8rem",textAlign:i===2?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.68rem",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
+          <tbody>{WORKBOOK_PAYMENT_REFERENCES.map(item=><tr key={item.row} style={{borderBottom:"1px solid #eef3ef"}}>
+            <td style={{padding:"0.45rem 0.8rem",whiteSpace:"nowrap"}}>{item.date}</td><td style={{padding:"0.45rem 0.8rem"}}>{item.kind}</td>
+            <td style={{padding:"0.45rem 0.8rem",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>KES {fmt(item.amount)}</td>
+            <td style={{padding:"0.45rem 0.8rem"}}>{item.reference || item.detail}<div style={{fontSize:"0.68rem",color:"#8a9e91"}}>{item.source}{item.reference?` · ${item.detail}`:""}</div></td>
+            <td style={{padding:"0.45rem 0.8rem",color:"#80530e"}}>{item.status}</td>
+          </tr>)}</tbody>
+        </table></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:"0.8rem",marginBottom:"1.1rem"}}>
         {[{l:"Total Levied",v:tCh,co:"#c0392b"},{l:"Total Collected",v:tPa,co:"#1a6b3a"},{l:"Shortfall",v:tCh-tPa,co:"#e67e22"},{l:"Rate",v:null,rate,co:rate>=90?"#1a6b3a":rate>=70?"#e67e22":"#c0392b"}].map(c=>(
@@ -995,6 +1318,23 @@ function Reports({ residents, transactions }) {
           </tbody>
         </table>
       </div>
+      <div style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,overflow:"hidden",marginTop:"1.1rem"}}>
+        <div style={{...FL,justifyContent:"space-between",gap:"0.7rem",flexWrap:"wrap",padding:"0.75rem 1rem",borderBottom:"1px solid #e2ece4"}}>
+          <span style={{fontWeight:800,color:"#0f2417",fontSize:"0.86rem"}}>Provider payments · {yr}</span>
+          <BTN v="sec" sz="sm" onClick={exportProviderReport}>⇩ Export Provider CSV</BTN>
+        </div>
+        <div style={{padding:"0.7rem 1rem",fontSize:"0.76rem",color:"#6b7f72",lineHeight:1.55}}>
+          Contracted cost: <b>KES {fmt(provider.monthlyCharge)}/month</b> · Payments recorded in {yr}: <b>KES {fmt(providerYearTotal)}</b> · Invoices: none recorded · Outstanding payable: not calculable without invoices. Payments are not externally verified by this app.
+        </div>
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.76rem",minWidth:700}}>
+          <thead><tr style={{background:"#f4f8f5"}}>{["Date","Billing period","Amount","Method","Reference","Status / recorder"].map((h,i)=><th key={h} style={{padding:"0.45rem 0.7rem",textAlign:i===2?"right":"left",color:"#4a6352",fontSize:"0.67rem",textTransform:"uppercase"}}>{h}</th>)}</tr></thead>
+          <tbody>{providerYearPayments.length===0?<tr><td colSpan={6} style={{padding:"1.1rem",textAlign:"center",color:"#8a9e91"}}>No Provider payments recorded for {yr}.</td></tr>:providerYearPayments.map(item=><tr key={item.id} style={{borderTop:"1px solid #eef3ef"}}>
+            <td style={{padding:"0.45rem 0.7rem"}}>{item.date}</td><td style={{padding:"0.45rem 0.7rem"}}>{item.billingPeriod||"—"}</td>
+            <td style={{padding:"0.45rem 0.7rem",textAlign:"right",fontWeight:800}}>KES {fmt(item.amount)}</td><td style={{padding:"0.45rem 0.7rem"}}>{item.method}</td>
+            <td style={{padding:"0.45rem 0.7rem"}}>{item.reference||"—"}</td><td style={{padding:"0.45rem 0.7rem"}}>{item.status||"recorded"} · {item.recordedBy?.name||item.recordedBy||"unknown"}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </div>
     </div>
   );
 }
@@ -1002,11 +1342,20 @@ function Reports({ residents, transactions }) {
 // ══════════════════════════════════════════════════════════════
 // RESIDENT VIEW (read-only, for residents)
 // ══════════════════════════════════════════════════════════════
-function ResidentView({ residents, transactions, provider, onBack }) {
-  const [unit, setUnit] = useState("");
+function ResidentView({ residents, transactions, provider, onBack, authMode, residentId }) {
+  const [unit, setUnit] = useState(residentId || "");
   const [showPay, setShowPay] = useState(false);
-  const resident = residents.find(r => r.id === unit) || null;
+  const selectedResidentId = authMode === "signed-in" ? residentId : unit;
+  const resident = residents.find(r => r.id === selectedResidentId) || null;
   const paybill = provider.paybill || PAYBILL;
+
+  if (authMode !== "offline" && !(authMode === "signed-in" && residentId && resident)) return (
+    <div style={{background:"#fff8ec",border:"1px solid #f0d5a8",borderRadius:12,padding:"1.25rem",maxWidth:620,margin:"1rem auto",color:"#80530e",lineHeight:1.65}}>
+      <h2 style={{margin:"0 0 0.5rem",fontSize:"1.05rem",color:"#68430b"}}>Resident access is not configured</h2>
+      <p style={{margin:"0 0 1rem",fontSize:"0.85rem"}}>This account is connected to shared estate data. A unit selector is not authentication, so resident statements are unavailable here until resident accounts and server-side unit access are implemented.</p>
+      <BTN v="sec" onClick={onBack}><Ico n="back" sz={14}/> Back to Admin</BTN>
+    </div>
+  );
 
   if (!resident) return (
     <div>
@@ -1024,6 +1373,9 @@ function ResidentView({ residents, transactions, provider, onBack }) {
           <option value="">-- Select your unit --</option>
           {residents.map(r => <option key={r.id} value={r.id}>{r.name} · Unit {r.unit}</option>)}
         </SEL></FLD>
+        <div role="note" style={{background:"#fff8ec",border:"1px solid #f0d5a8",borderRadius:9,padding:"0.7rem 0.8rem",fontSize:"0.75rem",color:"#80530e",lineHeight:1.55,marginBottom:"0.8rem"}}>
+          Local demonstration only. This unit selector is not authentication and must not be used to expose resident accounts on a public deployment.
+        </div>
         <div style={{background:"#f4f8f5",borderRadius:9,padding:"0.8rem 0.9rem",fontSize:"0.8rem",color:"#4a6352",lineHeight:1.6}}>
           <b>Need to pay?</b> Use M-Pesa Paybill <b>{paybill}</b> and enter your unit number as the account.
         </div>
@@ -1031,10 +1383,9 @@ function ResidentView({ residents, transactions, provider, onBack }) {
     </div>
   );
 
-  const myT = [...transactions].filter(t => t.residentId === resident.id).sort((a,b) => a.date.localeCompare(b.date));
-  let run = 0;
-  const rows = myT.map(t => { if (t.type === "payment") run -= t.amount; else run += t.amount; return {...t, run}; });
-  const bal = run;
+  const myT = [...transactions].filter(t => t.residentId === resident.id);
+  const rows = runningBalance(myT);
+  const bal = rows.length ? rows[rows.length-1].run : 0;
 
   return (
     <div>
@@ -1043,10 +1394,10 @@ function ResidentView({ residents, transactions, provider, onBack }) {
           <h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>🏡 Lemayian Court</h2>
           <p style={{margin:"0.22rem 0 0",color:"#6b7f72",fontSize:"0.83rem"}}>Resident portal · {resident.name} · Unit {resident.unit}</p>
         </div>
-        <div style={{...FL,gap:"0.5rem",flexWrap:"wrap"}}>
+        {authMode === "offline" && <div style={{...FL,gap:"0.5rem",flexWrap:"wrap"}}>
           <BTN v="gho" sz="sm" onClick={() => setUnit("")}>Change unit</BTN>
           <BTN v="gho" onClick={onBack}><Ico n="back" sz={14}/> Back to Admin</BTN>
-        </div>
+        </div>}
       </div>
 
       <div style={{background:"#fff",borderRadius:14,border:"1px solid #e2ece4",padding:"1.35rem 1.5rem",marginBottom:"1rem",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"1rem"}}>
@@ -1063,15 +1414,16 @@ function ResidentView({ residents, transactions, provider, onBack }) {
         <div style={{padding:"0.8rem 1.1rem",borderBottom:"1px solid #e2ece4",fontWeight:800,color:"#0f2417",fontSize:"0.88rem"}}>Your Statement</div>
         <div style={{overflow:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem",minWidth:460}}>
-            <thead><tr style={{background:"#f4f8f5"}}>{["Date","Description","Charge","Payment","Balance"].map((h,i)=><th key={h} style={{padding:"0.55rem 0.9rem",textAlign:i>=2?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
+            <thead><tr style={{background:"#f4f8f5"}}>{["Date","Description","Charge","Payment","Adjustment","Balance"].map((h,i)=><th key={h} style={{padding:"0.55rem 0.9rem",textAlign:i>=2?"right":"left",color:"#4a6352",fontWeight:800,fontSize:"0.69rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>{h}</th>)}</tr></thead>
             <tbody>
-              {rows.length===0 && <tr><td colSpan={5} style={{textAlign:"center",padding:"2.5rem",color:"#8a9e91",fontStyle:"italic"}}>No transactions yet</td></tr>}
+              {rows.length===0 && <tr><td colSpan={6} style={{textAlign:"center",padding:"2.5rem",color:"#8a9e91",fontStyle:"italic"}}>No transactions yet</td></tr>}
               {[...rows].reverse().map(t => (
                 <tr key={t.id} style={{borderBottom:"1px solid #eef3ef"}}>
                   <td style={{padding:"0.5rem 0.9rem",color:"#4a6352",whiteSpace:"nowrap"}}>{t.date}</td>
                   <td style={{padding:"0.5rem 0.9rem",color:"#0f2417"}}>{t.note}</td>
-                  <td style={{padding:"0.5rem 0.9rem",textAlign:"right",color:"#c0392b",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type!=="payment"?`KES ${fmt(t.amount)}`:""}</td>
+                  <td style={{padding:"0.5rem 0.9rem",textAlign:"right",color:"#c0392b",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="charge"?`KES ${fmt(t.amount)}`:""}</td>
                   <td style={{padding:"0.5rem 0.9rem",textAlign:"right",color:"#1a6b3a",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="payment"?`KES ${fmt(t.amount)}`:""}</td>
+                  <td style={{padding:"0.5rem 0.9rem",textAlign:"right",color:t.balanceEffect<0?"#c0392b":"#2471a3",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{t.type==="reversal"?`KES ${fmt(t.balanceEffect)}`:""}</td>
                   <td style={{padding:"0.5rem 0.9rem",textAlign:"right",fontWeight:800,fontVariantNumeric:"tabular-nums",color:t.run>0?"#c0392b":t.run<0?"#2471a3":"#1a6b3a"}}>KES {fmt(Math.abs(t.run))}{t.run<0?" Cr":""}</td>
                 </tr>
               ))}
@@ -1125,10 +1477,14 @@ function ResidentView({ residents, transactions, provider, onBack }) {
 // ══════════════════════════════════════════════════════════════
 // PROVIDER
 // ══════════════════════════════════════════════════════════════
-function Provider({ provider, setProvider, toast }) {
+function Provider({ provider, setProvider, payments, setPayments, authMode, authToken, authUser, toast }) {
   const [fm, setFm] = useState(provider);
   useEffect(() => setFm(provider), [provider]);
   const [waState, setWaState] = useState({});
+  const [paymentForm, setPaymentForm] = useState(() => ({date:today(),amount:"",method:"M-Pesa",reference:"",billingPeriod:"",notes:"",idempotencyKey:uid()}));
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const canManage = authMode === "offline" || ["owner","manager","accountant"].includes(authUser?.role);
+  const paymentTotal = payments.reduce((sum,item) => sum + (Number(item.amount) || 0),0);
   const fields = [
     {k:"name",          l:"Provider Name"},
     {k:"contactPerson", l:"Contact Person"},
@@ -1137,8 +1493,33 @@ function Provider({ provider, setProvider, toast }) {
     {k:"paybill",       l:"M-Pesa Paybill"},
   ];
   const save = () => {
-    setProvider({ ...fm, monthlyCharge: parseFloat(fm.monthlyCharge) || 0, paybill: String(fm.paybill || "").trim() });
+    const monthlyCharge = Number(fm.monthlyCharge);
+    if (!canManage) { toast("Your role cannot edit provider details","error"); return; }
+    if (!String(fm.name || "").trim() || !Number.isSafeInteger(monthlyCharge) || monthlyCharge <= 0) { toast("Enter a provider name and a positive whole-KES monthly charge","error"); return; }
+    setProvider({ ...fm, monthlyCharge, paybill: String(fm.paybill || "").trim() });
     toast("Provider details saved");
+  };
+  const recordPayment = async () => {
+    const amount = Number(paymentForm.amount);
+    if (!canManage) { toast("Your role cannot record provider payments","error"); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentForm.date) || !Number.isSafeInteger(amount) || amount <= 0) { toast("Enter a valid payment date and positive whole-KES amount","error"); return; }
+    if (paymentForm.billingPeriod && !/^\d{4}-(0[1-9]|1[0-2])$/.test(paymentForm.billingPeriod)) { toast("Billing period must use YYYY-MM","error"); return; }
+    if (paymentForm.reference && payments.some(item => item.reference === paymentForm.reference.trim())) { toast("A provider payment with this reference is already recorded","error"); return; }
+    const payload = {...paymentForm,amount,reference:paymentForm.reference.trim(),notes:paymentForm.notes.trim()};
+    setPaymentBusy(true);
+    try {
+      let payment;
+      if (authMode === "signed-in") {
+        const result = await apiRequest("/provider-payments",{method:"POST",body:JSON.stringify(payload)},authToken);
+        payment = result.payment;
+      } else {
+        payment = {...payload,id:uid(),status:"recorded",verification:"not independently verified",recordedAt:new Date().toISOString(),recordedBy:authUser?.name || "Local offline user"};
+      }
+      setPayments(current => [payment,...current.filter(item=>item.id!==payment.id)]);
+      setPaymentForm({date:today(),amount:"",method:"M-Pesa",reference:"",billingPeriod:"",notes:"",idempotencyKey:uid()});
+      toast("Provider payment recorded; external payment not verified");
+    } catch (error) { toast(error.message || "Could not save provider payment","error"); }
+    finally { setPaymentBusy(false); }
   };
   const dirty = JSON.stringify(fm) !== JSON.stringify(provider);
   return (
@@ -1146,8 +1527,8 @@ function Provider({ provider, setProvider, toast }) {
       <div style={{...FL,justifyContent:"space-between",marginBottom:"1.35rem",flexWrap:"wrap",gap:"0.7rem"}}>
         <div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Security Provider</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Contracted security firm and payment details</p></div>
         <div style={{...FL,gap:"0.5rem"}}>
-          {dirty && <BTN v="sec" sz="sm" onClick={() => setFm(provider)}>Discard</BTN>}
-          <BTN onClick={save} disabled={!dirty}><Ico n="check" sz={14}/> Save Changes</BTN>
+          {canManage && dirty && <BTN v="sec" sz="sm" onClick={() => setFm(provider)}>Discard</BTN>}
+          {canManage && <BTN onClick={save} disabled={!dirty}><Ico n="check" sz={14}/> Save Changes</BTN>}
         </div>
       </div>
 
@@ -1176,16 +1557,45 @@ function Provider({ provider, setProvider, toast }) {
       <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2ece4",padding:"1.25rem"}}>
         <h3 style={{margin:"0 0 1rem",fontSize:"0.95rem",color:"#0f2417"}}>Provider details</h3>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:"0 0.85rem"}}>
-          {fields.map(f => <FLD key={f.k} label={f.l}><INP value={fm[f.k] || ""} onChange={e => setFm(p => ({...p,[f.k]:e.target.value}))}/></FLD>)}
-          <FLD label="Monthly Charge (KES)"><INP type="number" value={fm.monthlyCharge} onChange={e => setFm(p => ({...p,monthlyCharge:e.target.value}))}/></FLD>
+          {fields.map(f => <FLD key={f.k} label={f.l}><INP disabled={!canManage} value={fm[f.k] || ""} onChange={e => setFm(p => ({...p,[f.k]:e.target.value}))}/></FLD>)}
+          <FLD label="Monthly Charge (KES)"><INP disabled={!canManage} type="number" step="1" min="1" value={fm.monthlyCharge} onChange={e => setFm(p => ({...p,monthlyCharge:e.target.value}))}/></FLD>
         </div>
-        <FLD label="Notes"><TXA rows={4} value={fm.notes || ""} onChange={e => setFm(p => ({...p,notes:e.target.value}))} placeholder="Contract terms, renewal dates, guard shifts, incidents…"/></FLD>
+        <FLD label="Notes"><TXA disabled={!canManage} rows={4} value={fm.notes || ""} onChange={e => setFm(p => ({...p,notes:e.target.value}))} placeholder="Contract terms, renewal dates, guard shifts, incidents…"/></FLD>
         <div style={{...FL,gap:"0.55rem",flexWrap:"wrap"}}>
           <BTN v="sec" sz="sm" onClick={() => { setWaState("msg"); }}>
             <Ico n="warn" sz={13}/> Quick message to {provider.contactPerson || "contact"}
           </BTN>
         </div>
       </div>
+
+      <section style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,padding:"1.2rem",marginTop:"1rem"}}>
+        <h3 style={{margin:"0 0 0.8rem",fontSize:"0.95rem",color:"#0f2417"}}>Provider payment history</h3>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:"0.7rem",marginBottom:"1rem"}}>
+          {[["Contracted monthly cost",`KES ${fmt(provider.monthlyCharge)}`],["Payments recorded",`KES ${fmt(paymentTotal)}`],["Invoices","No invoices recorded"],["Outstanding payable","Not calculable without invoices"]].map(([label,value])=><div key={label} style={{background:"#f4f8f5",borderRadius:8,padding:"0.7rem 0.8rem"}}><div style={{fontSize:"0.67rem",color:"#6b7f72",fontWeight:800,textTransform:"uppercase",marginBottom:"0.25rem"}}>{label}</div><div style={{fontSize:"0.83rem",fontWeight:800,color:"#0f2417"}}>{value}</div></div>)}
+        </div>
+        <p style={{margin:"0 0 1rem",fontSize:"0.76rem",color:"#6b7f72",lineHeight:1.5}}>A recorded payment is not proof that the provider received it. No invoice records or external payment verification are available.</p>
+        {canManage && <div style={{borderTop:"1px solid #e2ece4",paddingTop:"1rem",marginBottom:"1rem"}}>
+          <h4 style={{margin:"0 0 0.75rem",fontSize:"0.84rem",color:"#0f2417"}}>Record provider payment</h4>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))",gap:"0 0.7rem"}}>
+            <FLD label="Payment date"><INP type="date" value={paymentForm.date} onChange={e=>setPaymentForm(p=>({...p,date:e.target.value}))}/></FLD>
+            <FLD label="Amount (KES)"><INP type="number" min="1" step="1" value={paymentForm.amount} onChange={e=>setPaymentForm(p=>({...p,amount:e.target.value}))}/></FLD>
+            <FLD label="Method"><SEL value={paymentForm.method} onChange={e=>setPaymentForm(p=>({...p,method:e.target.value}))}>{["M-Pesa","Bank Transfer","Cash","Cheque","Other"].map(method=><option key={method}>{method}</option>)}</SEL></FLD>
+            <FLD label="Billing period (optional)"><INP type="month" value={paymentForm.billingPeriod} onChange={e=>setPaymentForm(p=>({...p,billingPeriod:e.target.value}))}/></FLD>
+            <FLD label="Payment reference"><INP value={paymentForm.reference} onChange={e=>setPaymentForm(p=>({...p,reference:e.target.value}))}/></FLD>
+            <FLD label="Notes"><INP value={paymentForm.notes} onChange={e=>setPaymentForm(p=>({...p,notes:e.target.value}))}/></FLD>
+          </div>
+          <BTN disabled={paymentBusy} onClick={recordPayment}><Ico n="check" sz={14}/>{paymentBusy?" Recording…":" Record Payment"}</BTN>
+        </div>}
+        <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.76rem",minWidth:680}}>
+          <thead><tr style={{background:"#f4f8f5"}}>{["Payment date","Billing period","Amount","Method","Reference","Status / recorded by"].map((heading,index)=><th key={heading} style={{padding:"0.45rem 0.65rem",textAlign:index===2?"right":"left",color:"#4a6352",fontSize:"0.67rem",textTransform:"uppercase"}}>{heading}</th>)}</tr></thead>
+          <tbody>{payments.length===0?<tr><td colSpan={6} style={{padding:"1.2rem",textAlign:"center",color:"#8a9e91"}}>No provider payments recorded.</td></tr>:payments.map(item=><tr key={item.id} style={{borderTop:"1px solid #eef3ef"}}>
+            <td style={{padding:"0.5rem 0.65rem",whiteSpace:"nowrap"}}>{item.date}</td><td style={{padding:"0.5rem 0.65rem"}}>{item.billingPeriod||"—"}</td>
+            <td style={{padding:"0.5rem 0.65rem",textAlign:"right",fontWeight:800,fontVariantNumeric:"tabular-nums"}}>KES {fmt(item.amount)}</td>
+            <td style={{padding:"0.5rem 0.65rem"}}>{item.method}</td><td style={{padding:"0.5rem 0.65rem"}}>{item.reference||"—"}</td>
+            <td style={{padding:"0.5rem 0.65rem"}}>{item.status||"recorded"}; unverified<div style={{fontSize:"0.68rem",color:"#8a9e91"}}>By {item.recordedBy?.name||item.recordedBy||"unknown"}</div></td>
+          </tr>)}</tbody>
+        </table></div>
+      </section>
 
       {waState === "msg" && <Modal title={`Message ${provider.contactPerson || provider.name}`} onClose={() => setWaState("")} w={440}>
         <p style={{margin:"0 0 0.85rem",color:"#4a6352",fontSize:"0.85rem",lineHeight:1.6}}>
@@ -1196,7 +1606,7 @@ function Provider({ provider, setProvider, toast }) {
         </div>
         <div style={{...FL,justifyContent:"flex-end",gap:"0.6rem"}}>
           <BTN v="sec" onClick={() => setWaState("")}>Cancel</BTN>
-          <BTN onClick={() => { window.open(waLink(provider.mobile, `Dear ${provider.contactPerson || "team"}, this is the Lemayian Court estate committee regarding ${provider.name || "the security contract"}.`), "_blank", "noopener"); setWaState(""); }}>
+          <BTN disabled={!normaliseKenyanPhone(provider.mobile)} title={!normaliseKenyanPhone(provider.mobile) ? "No valid Kenyan mobile number on file" : undefined} onClick={() => { const link = waLink(provider.mobile, `Dear ${provider.contactPerson || "team"}, this is the Lemayian Court estate committee regarding ${provider.name || "the security contract"}.`); if (link) window.open(link, "_blank", "noopener"); setWaState(""); }}>
             💬 Open WhatsApp
           </BTN>
         </div>
@@ -1209,25 +1619,29 @@ function Provider({ provider, setProvider, toast }) {
 // SETTINGS
 // ══════════════════════════════════════════════════════════════
 // ── Reminder schedule helpers ──────────────────────────────────
-function nextDateOn(day, from = new Date()) {
-  const d = new Date(from.getFullYear(), from.getMonth(), day);
-  const now = new Date();
-  if (d < new Date(now.getFullYear(), now.getMonth(), now.getDate())) d.setMonth(d.getMonth() + 1);
-  return d;
-}
 const isoOf = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 const daysUntil = iso => Math.max(0, Math.round((new Date(`${iso}T00:00:00`) - new Date(new Date().toDateString())) / 86400000));
+function reminderSchedule(from = new Date()) {
+  const year = from.getFullYear();
+  const month = from.getMonth();
+  const todayISO = isoOf(from);
+  const levyISO = isoOf(new Date(year, month, 25));
+  const eomISO = isoOf(new Date(year, month + 1, 0));
+  const upcoming = [{type:"levy",iso:levyISO},{type:"overdue",iso:eomISO}]
+    .filter(item => item.iso >= todayISO)
+    .sort((a,b) => a.iso.localeCompare(b.iso));
+  const nextUp = upcoming[0] || {type:"levy",iso:isoOf(new Date(year, month + 1, 25))};
+  return {levyISO,eomISO,nextUp};
+}
 function dayLabel(iso) {
   const n = new Date(`${iso}T00:00:00`).getDate();
   const s = (n % 10 === 1 && n !== 11) ? "st" : (n % 10 === 2 && n !== 12) ? "nd" : (n % 10 === 3 && n !== 13) ? "rd" : "th";
   return `${n}${s} ${MONTHS[new Date(`${iso}T00:00:00`).getMonth()]}`;
 }
-const endOfMonthISO = () => isoOf(nextDateOn(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate()));
-
 function Reminders({ residents, reminders, setReminders, transactions, toast }) {
   const [add, setAdd] = useState(false);
   const [bulk, setBulk] = useState(false);
-  const [sentLog, setSentLog] = useState({});
+  const [selectedRecipients, setSelectedRecipients] = useState([]);
   const [fm, setFm] = useState({residentId:"",date:today(),method:"WhatsApp",note:"",sentBy:"Estate Manager"});
   const [bFm, setBFm] = useState({type:"levy",date:today(),method:"WhatsApp"});
   const {confirm, dialog} = useConfirm();
@@ -1236,9 +1650,7 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
   const debtors = bals.filter(r => r.bal > 0);
   const now = new Date();
   const thisMonth = MONTHS[now.getMonth()];
-  const levyISO = isoOf(nextDateOn(25));
-  const eomISO = endOfMonthISO();
-  const nextUp = levyISO <= eomISO ? {type:"levy", iso:levyISO} : {type:"overdue", iso:eomISO};
+  const {levyISO,eomISO,nextUp} = reminderSchedule(now);
   const scheduleISO = type => type === "levy" ? levyISO : eomISO;
   const scheduleKey = type => `${type}-${scheduleISO(type).slice(0,7)}`;
   const away = daysUntil(nextUp.iso);
@@ -1246,26 +1658,38 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
   const markSent = async type => {
     const targets = type === "levy" ? residents : debtors;
     if (!targets.length) { toast("No residents to remind","error"); return; }
+    const key = scheduleKey(type);
+    if (reminders.some(item => item.scheduleKey === key)) { toast("This schedule has already been logged"); return; }
     if (!await confirm(`Mark the ${REMINDER_TYPES[type].label} as sent to ${targets.length} resident${targets.length!==1?"s":""}?\n\nThis logs one entry per resident in the reminder log.`)) return;
-    setReminders(p => [...p, ...targets.map(r => ({id:uid(), residentId:r.id, date:today(), method:"WhatsApp", sentBy:"Estate Manager", kind:type, note: reminderMessage(type, r.name, r.bal, thisMonth)}))]);
-    setSentLog(p => ({...p, [scheduleKey(type)]:today()}));
+    const month = MONTHS[new Date(`${scheduleISO(type)}T00:00:00`).getMonth()];
+    setReminders(p => [...p, ...targets.map(r => ({id:uid(), residentId:r.id, date:today(), method:"WhatsApp", sentBy:"Estate Manager", kind:type, scheduleKey:key, status:"manually-marked-sent", deliveryStatus:"unverified", note: reminderMessage(type, r.name, r.bal, month)}))]);
     toast(`${REMINDER_TYPES[type].label} logged for ${targets.length} resident${targets.length!==1?"s":""}`);
   };
 
   const sendBulk = async () => {
-    const targets = bFm.type === "levy" ? residents : debtors;
+    const eligible = bFm.type === "levy" ? residents : debtors;
+    const targets = eligible.filter(r => selectedRecipients.includes(r.id));
     if (!targets.length) { toast("No residents match this reminder","error"); return; }
     if (!await confirm(`Send the ${REMINDER_TYPES[bFm.type].label} to ${targets.length} resident${targets.length!==1?"s":""} by ${bFm.method}?\n\nOne reminder log entry will be created per resident.`)) return;
     const month = MONTHS[new Date(`${bFm.date}T00:00:00`).getMonth()];
-    setReminders(p => [...p, ...targets.map(r => ({id:uid(), residentId:r.id, date:bFm.date, method:bFm.method, sentBy:"Estate Manager", kind:bFm.type, note: reminderMessage(bFm.type, r.name, r.bal, month)}))]);
-    toast(`Bulk reminder logged for ${targets.length} resident${targets.length!==1?"s":""}`);
+    const additions = targets.filter(r => !reminders.some(item => item.bulkKey === `${bFm.type}-${bFm.date}-${r.id}`));
+    if (!additions.length) { toast("These reminders have already been logged"); setBulk(false); return; }
+    setReminders(p => [...p, ...additions.map(r => ({id:uid(), residentId:r.id, date:bFm.date, method:bFm.method, sentBy:"Estate Manager", kind:bFm.type, bulkKey:`${bFm.type}-${bFm.date}-${r.id}`, status:"prepared", deliveryStatus:"unverified", note: reminderMessage(bFm.type, r.name, r.bal, month)}))]);
+    toast(`Bulk reminder logged for ${additions.length} resident${additions.length!==1?"s":""}; delivery is not verified`);
     setBulk(false);
+  };
+
+  const openBulk = () => {
+    const type = "levy";
+    setBFm({type,date:today(),method:"WhatsApp"});
+    setSelectedRecipients(residents.map(r => r.id));
+    setBulk(true);
   };
 
   const schedCard = type => {
     const t = REMINDER_TYPES[type];
     const targets = type === "levy" ? residents : debtors;
-    const sent = sentLog[scheduleKey(type)];
+    const sent = reminders.some(item => item.scheduleKey === scheduleKey(type));
     return (
       <div key={type} style={{background:"#fff",border:`1px solid ${type==="levy"?"#e2ece4":"#f5c5c2"}`,borderRadius:12,padding:"1rem 1.15rem"}}>
         <div style={{...FL,justifyContent:"space-between",gap:"0.6rem",marginBottom:"0.55rem",flexWrap:"wrap"}}>
@@ -1276,7 +1700,7 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
               <div style={{fontSize:"0.73rem",color:"#6b7f72"}}>{t.label} · sent to {t.audience}</div>
             </div>
           </div>
-          {sent ? <BDG c="#1a6b3a" bg="#eaf5ed">✓ Sent {sent}</BDG> : <BTN sz="sm" onClick={() => markSent(type)}>Mark as Sent</BTN>}
+          {sent ? <BDG c="#8a5a12" bg="#fff8ec">Logged · delivery unverified</BDG> : <BTN sz="sm" onClick={() => markSent(type)}>Log as Sent</BTN>}
         </div>
         <div style={{fontSize:"0.76rem",color:"#4a6352",background:"#f4f8f5",borderRadius:8,padding:"0.55rem 0.75rem",lineHeight:1.55}}>
           <b>{targets.length}</b> recipient{targets.length!==1?"s":""} · {type === "levy" ? `KES ${fmt(MONTHLY_TOTAL)} due by the 25th` : `${debtors.length} with a balance`}
@@ -1298,7 +1722,7 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
       <div><h2 style={{margin:0,fontSize:"1.3rem",fontWeight:900,color:"#0f2417"}}>Reminders</h2><p style={{margin:"0.2rem 0 0",color:"#6b7f72",fontSize:"0.84rem"}}>Scheduled levy reminders and arrears follow-up trail</p></div>
       <div style={{...FL,gap:"0.5rem",flexWrap:"wrap"}}>
         <BTN v="sec" onClick={() => setAdd(true)}>🔔 Log Reminder</BTN>
-        <BTN onClick={() => setBulk(true)}>📣 Send Bulk Reminder</BTN>
+        <BTN onClick={openBulk}>📣 Send Bulk Reminder</BTN>
       </div>
     </div>
 
@@ -1328,17 +1752,17 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
             <div style={{fontSize:"0.75rem",color:"#6b7f72"}}>{r.phone || "No phone on file"}</div>
           </div>
           <div>{r.bal>0?<BDG c="#c0392b" bg="#fff1f0">KES {fmt(r.bal)} owed</BDG>:r.bal<0?<BDG c="#2471a3" bg="#eaf3fb">KES {fmt(Math.abs(r.bal))} credit</BDG>:<BDG c="#1a6b3a" bg="#eaf5ed">✓ Settled</BDG>}</div>
-          <BTN v="gho" sz="sm" onClick={() => window.open(waLink(r.phone, reminderMessage("levy", r.name, r.bal, thisMonth)), "_blank", "noopener")} disabled={!r.phone}>💬 WhatsApp</BTN>
+          <BTN v="gho" sz="sm" onClick={() => { const link = waLink(r.phone, reminderMessage("levy", r.name, r.bal, thisMonth)); if (link) window.open(link, "_blank", "noopener"); }} disabled={!normaliseKenyanPhone(r.phone)} title={!normaliseKenyanPhone(r.phone) ? "No valid Kenyan mobile number on file" : "Opens WhatsApp with a prepared message; delivery is not confirmed"}>💬 WhatsApp</BTN>
         </div>
       ))}
     </div>
 
     <h3 style={{margin:"0 0 0.7rem",fontSize:"0.88rem",fontWeight:800,color:"#0f2417"}}>Reminder Log</h3>
-    <div style={{display:"grid",gap:"0.65rem"}}>{sorted.map(item => { const resident=residents.find(r => r.id===item.residentId); return <div key={item.id} style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,padding:"0.85rem 1.15rem",...FL,gap:"0.85rem",flexWrap:"wrap"}}><div style={{fontSize:"1.15rem"}}>{item.method==="Call"?"📞":item.method==="SMS"?"📱":item.method==="Email"?"📧":"💬"}</div><div style={{flex:1,minWidth:180}}><div style={{fontWeight:800,color:"#0f2417",fontSize:"0.85rem"}}>{resident?.name || "Unknown resident"} <BDG>{item.method}</BDG> {item.kind && <BDG c="#2471a3" bg="#eaf3fb">{REMINDER_TYPES[item.kind]?.label || item.kind}</BDG>} <span style={{fontSize:"0.73rem",color:"#8a9e91",fontWeight:400}}>{item.date}</span></div><div style={{fontSize:"0.8rem",color:"#4a6352",marginTop:2}}>{item.note}</div><div style={{fontSize:"0.71rem",color:"#8a9e91",marginTop:2}}>Sent by: {item.sentBy}</div></div><BTN v="dan" sz="sm" onClick={() => remove(item.id)}><Ico n="trash" sz={12}/></BTN></div>; })}</div>
+    <div style={{display:"grid",gap:"0.65rem"}}>{sorted.map(item => { const resident=residents.find(r => r.id===item.residentId); return <div key={item.id} style={{background:"#fff",border:"1px solid #e2ece4",borderRadius:12,padding:"0.85rem 1.15rem",...FL,gap:"0.85rem",flexWrap:"wrap"}}><div style={{fontSize:"1.15rem"}}>{item.method==="Call"?"📞":item.method==="SMS"?"📱":item.method==="Email"?"📧":"💬"}</div><div style={{flex:1,minWidth:180}}><div style={{fontWeight:800,color:"#0f2417",fontSize:"0.85rem"}}>{resident?.name || "Unknown resident"} <BDG>{item.method}</BDG> {item.kind && <BDG c="#2471a3" bg="#eaf3fb">{REMINDER_TYPES[item.kind]?.label || item.kind}</BDG>} <span style={{fontSize:"0.73rem",color:"#8a9e91",fontWeight:400}}>{item.date}</span></div><div style={{fontSize:"0.8rem",color:"#4a6352",marginTop:2}}>{item.note}</div><div style={{fontSize:"0.71rem",color:"#8a9e91",marginTop:2}}>{item.status === "manually-marked-sent" ? "Manually marked sent; delivery not verified" : item.status === "prepared" ? "Prepared/logged; delivery not verified" : `Sent by: ${item.sentBy}`}</div></div><BTN v="dan" sz="sm" onClick={() => remove(item.id)}><Ico n="trash" sz={12}/></BTN></div>; })}</div>
     {sorted.length===0 && <div style={{textAlign:"center",padding:"3rem",color:"#8a9e91",background:"#fff",borderRadius:12,border:"1px solid #e2ece4"}}>No reminders logged yet.</div>}
     {add && <Modal title="Log Reminder" onClose={() => setAdd(false)}><FLD label="Resident"><SEL value={fm.residentId} onChange={e=>setFm(p=>({...p,residentId:e.target.value}))}><option value="">-- Select resident --</option>{residents.map(r=><option key={r.id} value={r.id}>{r.name} ({r.unit})</option>)}</SEL></FLD><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.7rem"}}><FLD label="Date"><INP type="date" value={fm.date} onChange={e=>setFm(p=>({...p,date:e.target.value}))}/></FLD><FLD label="Method"><SEL value={fm.method} onChange={e=>setFm(p=>({...p,method:e.target.value}))}>{["WhatsApp","Call","SMS","Email","Letter","Visit"].map(method=><option key={method}>{method}</option>)}</SEL></FLD></div><FLD label="Note"><TXA value={fm.note} onChange={e=>setFm(p=>({...p,note:e.target.value}))} placeholder="What was communicated?" rows={3}/></FLD><FLD label="Sent by"><INP value={fm.sentBy} onChange={e=>setFm(p=>({...p,sentBy:e.target.value}))}/></FLD><div style={{...FL,justifyContent:"flex-end",gap:"0.65rem"}}><BTN v="sec" onClick={() => setAdd(false)}>Cancel</BTN><BTN onClick={save}>Log Reminder</BTN></div></Modal>}
     {bulk && <Modal title="Send Bulk Reminder" onClose={() => setBulk(false)} w={520}>
-      <FLD label="Reminder type"><SEL value={bFm.type} onChange={e=>setBFm(p=>({...p,type:e.target.value}))}>
+      <FLD label="Reminder type"><SEL value={bFm.type} onChange={e=>{ const type=e.target.value; setBFm(p=>({...p,type})); setSelectedRecipients((type==="levy"?residents:debtors).map(r=>r.id)); }}>
         <option value="levy">25th reminder — Monthly levy due (ALL residents)</option>
         <option value="overdue">End-of-month reminder — Payment overdue (balance &gt; 0)</option>
       </SEL></FLD>
@@ -1351,8 +1775,17 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
           {reminderMessage(bFm.type, residents[0]?.name || "[Name]", Math.max(debtors[0]?.bal || 0, MONTHLY_TOTAL), MONTHS[new Date(`${bFm.date}T00:00:00`).getMonth()])}
         </div>
       </FLD>
+      <FLD label="Recipients" hint="WhatsApp, SMS, and calls are not sent automatically by this app.">
+        <div style={{maxHeight:150,overflowY:"auto",border:"1px solid #e2ece4",borderRadius:8,padding:"0.35rem 0.65rem"}}>
+          {(bFm.type === "levy" ? residents : debtors).map(r => <label key={r.id} style={{display:"flex",alignItems:"center",gap:"0.55rem",padding:"0.35rem 0",fontSize:"0.82rem",color:"#0f2417"}}>
+            <input type="checkbox" checked={selectedRecipients.includes(r.id)} onChange={e=>setSelectedRecipients(p=>e.target.checked?[...p,r.id]:p.filter(id=>id!==r.id))}/>
+            {r.name} · {r.unit}{bFm.type === "overdue" ? ` · KES ${fmt(r.bal)} owed` : ""}
+          </label>)}
+          {(bFm.type === "levy" ? residents : debtors).length===0 && <div style={{padding:"0.65rem 0",fontSize:"0.82rem",color:"#8a9e91"}}>No eligible residents.</div>}
+        </div>
+      </FLD>
       <div style={{background:"#eaf5ed",borderRadius:9,padding:"0.65rem 0.9rem",fontSize:"0.82rem",fontWeight:800,color:"#1a6b3a",marginBottom:"1rem"}}>
-        Will log {(bFm.type === "levy" ? residents : debtors).length} reminder{(bFm.type === "levy" ? residents : debtors).length!==1?"s":""} — one per resident
+        Will log {selectedRecipients.filter(id => (bFm.type === "levy" ? residents : debtors).some(r=>r.id===id)).length} reminder{selectedRecipients.length!==1?"s":""} — one per selected resident
       </div>
       <div style={{...FL,justifyContent:"flex-end",gap:"0.65rem"}}><BTN v="sec" onClick={() => setBulk(false)}>Cancel</BTN><BTN onClick={sendBulk}><Ico n="check" sz={13}/> Confirm &amp; Log</BTN></div>
     </Modal>}
@@ -1360,11 +1793,11 @@ function Reminders({ residents, reminders, setReminders, transactions, toast }) 
   </div>;
 }
 
-function Settings({ residents, setResidents, transactions, setTransactions, projects, setProjects, contribs, setContribs, reminders, setReminders, setProvider, toast }) {
+function Settings({ residents, setResidents, transactions, setTransactions, projects, setProjects, contribs, setContribs, reminders, setReminders, provider, setProvider, providerPayments, setProviderPayments, toast }) {
   const [confirmReset, setConfirmReset] = useState(false);
   const {confirm, dialog} = useConfirm();
   const backup = () => {
-    const data = {version:2, exported:new Date().toISOString(), residents, transactions, projects, contribs, reminders};
+    const data = {version:4, exported:new Date().toISOString(), residents, transactions, projects, contribs, reminders, provider, providerPayments};
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:"application/json"}));
     link.download = `lemayian-court-backup-${today()}.json`;
@@ -1385,6 +1818,8 @@ function Settings({ residents, setResidents, transactions, setTransactions, proj
         setProjects(Array.isArray(data.projects) ? data.projects : []);
         setContribs(Array.isArray(data.contribs) ? data.contribs : []);
         setReminders(Array.isArray(data.reminders) ? data.reminders : []);
+        if (data.provider && typeof data.provider === "object" && !Array.isArray(data.provider)) setProvider(data.provider);
+        setProviderPayments(Array.isArray(data.providerPayments) ? data.providerPayments : []);
         toast("Backup restored successfully");
       } catch { toast("Invalid backup file", "error"); }
     };
@@ -1398,6 +1833,7 @@ function Settings({ residents, setResidents, transactions, setTransactions, proj
     setContribs(SEED_CONTRIBS);
     setReminders(SEED_REMINDERS);
     setProvider(SEED_PROVIDER);
+    setProviderPayments([]);
     setConfirmReset(false);
     toast("Data reset to demo data", "warn");
   };
@@ -1479,6 +1915,7 @@ export default function App() {
   const [contribs, setContribs]   = useState([]);
   const [reminders, setReminders] = useState([]);
   const [provider, setProvider] = useState(SEED_PROVIDER);
+  const [providerPayments, setProviderPayments] = useState([]);
   const [residentMode, setResidentMode] = useState(false);
   const [loaded, setLoaded]     = useState(false);
   const [tourStep, setTourStep]   = useState(null);
@@ -1493,13 +1930,13 @@ export default function App() {
     const token = sg(AUTH_KEY, null);
     if (!token) { setAuthMode("signed-out"); return; }
     apiRequest("/me", {}, token).then(result => {
-      setAuthToken(token); setAuthUser(result.user); setResidents(result.data.residents); setTxns(result.data.transactions); setProjects(result.data.projects); setContribs(result.data.contribs); setReminders(result.data.reminders || []); setLoaded(true); setAuthMode("signed-in");
+      setAuthToken(token); setAuthUser(result.user); setResidentMode(result.user.role === "resident"); setResidents(result.data.residents); setTxns(result.data.transactions); setProjects(result.data.projects); setContribs(result.data.contribs); setReminders(result.data.reminders || []); setProvider(result.data.provider || sg(PROVIDER_KEY, SEED_PROVIDER)); setProviderPayments(result.data.providerPayments || []); setLoaded(true); setAuthMode("signed-in");
     }).catch(async () => {
       const refreshToken = sg(REFRESH_KEY, null);
       if (!refreshToken) throw new Error("No refresh token");
       const next = await apiRequest("/auth/refresh", {method:"POST",body:JSON.stringify({refreshToken})});
       ss(AUTH_KEY, next.accessToken); ss(REFRESH_KEY, next.refreshToken);
-      return apiRequest("/me", {}, next.accessToken).then(result => { setAuthToken(next.accessToken); setAuthUser(result.user); setResidents(result.data.residents); setTxns(result.data.transactions); setProjects(result.data.projects); setContribs(result.data.contribs); setReminders(result.data.reminders || []); setLoaded(true); setAuthMode("signed-in"); });
+      return apiRequest("/me", {}, next.accessToken).then(result => { setAuthToken(next.accessToken); setAuthUser(result.user); setResidentMode(result.user.role === "resident"); setResidents(result.data.residents); setTxns(result.data.transactions); setProjects(result.data.projects); setContribs(result.data.contribs); setReminders(result.data.reminders || []); setProvider(result.data.provider || sg(PROVIDER_KEY, SEED_PROVIDER)); setProviderPayments(result.data.providerPayments || []); setLoaded(true); setAuthMode("signed-in"); });
     }).catch(() => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setAuthMode("signed-out"); });
   }, []);
 
@@ -1521,20 +1958,28 @@ export default function App() {
   useEffect(() => { if (loaded && authMode === "offline") ss(KEYS.p, projects); }, [projects, loaded, authMode]);
   useEffect(() => { if (loaded && authMode === "offline") ss(KEYS.c, contribs); }, [contribs, loaded, authMode]);
   useEffect(() => { if (loaded && authMode === "offline") ss(KEYS.rem, reminders); }, [reminders, loaded, authMode]);
-  useEffect(() => { if (loaded && authMode === "offline") ss(PROVIDER_KEY, provider); }, [provider, loaded, authMode]);
+  useEffect(() => { if (loaded && authMode === "offline") ss(PROVIDER_PAYMENTS_KEY, providerPayments); }, [providerPayments, loaded, authMode]);
+  useEffect(() => { if (loaded) ss(PROVIDER_KEY, provider); }, [provider, loaded]);
   useEffect(() => {
-    if (!loaded || authMode !== "signed-in") return;
-    const timer = setTimeout(() => apiRequest("/data", {method:"PUT",body:JSON.stringify({residents,transactions:txns,projects,contribs,reminders})}, authToken).catch(() => toast("Cloud sync failed", "error")), 350);
+    if (!loaded || authMode !== "signed-in" || !["owner","manager","accountant"].includes(authUser?.role)) return;
+    const timer = setTimeout(() => apiRequest("/data", {method:"PUT",body:JSON.stringify({residents,transactions:txns,projects,contribs,reminders,provider})}, authToken).catch(() => toast("Cloud sync failed", "error")), 350);
     return () => clearTimeout(timer);
-  }, [residents, txns, projects, contribs, reminders, loaded, authMode, authToken, toast]);
+  }, [residents, txns, projects, contribs, reminders, provider, loaded, authMode, authToken, authUser?.role, toast]);
 
   const authenticated = data => {
     ss(AUTH_KEY, data.accessToken || data.token); ss(REFRESH_KEY, data.refreshToken || null); setAuthToken(data.accessToken || data.token); setAuthUser(data.user);
-    const source = data.data.residents.length ? data.data : {residents:SEED_RESIDENTS,transactions:buildSeedTxns(),projects:SEED_PROJECTS,contribs:SEED_CONTRIBS};
-    setResidents(source.residents); setTxns(source.transactions); setProjects(source.projects); setContribs(source.contribs); setReminders(source.reminders || []); setProvider(sg(PROVIDER_KEY, null) ?? SEED_PROVIDER); setLoaded(true); setAuthMode("signed-in");
+    const source = data.data;
+    setResidentMode(data.user.role === "resident");
+    setResidents(source.residents); setTxns(source.transactions); setProjects(source.projects); setContribs(source.contribs); setReminders(source.reminders || []); setProvider(source.provider || sg(PROVIDER_KEY, SEED_PROVIDER)); setProviderPayments(source.providerPayments || []); setLoaded(true); setAuthMode("signed-in");
   };
-  const offline = () => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setResidents(sg(KEYS.r, null) ?? SEED_RESIDENTS); setTxns(sg(KEYS.t, null) ?? buildSeedTxns()); setProjects(sg(KEYS.p, null) ?? SEED_PROJECTS); setContribs(sg(KEYS.c, null) ?? SEED_CONTRIBS); setReminders(sg(KEYS.rem, null) ?? SEED_REMINDERS); setProvider(sg(PROVIDER_KEY, null) ?? SEED_PROVIDER); setLoaded(true); setAuthMode("offline"); if (!sg(KEYS.tour, false)) setTourStep(0); };
-  const logout = () => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setAuthToken(null); setAuthUser(null); setLoaded(false); setTourStep(null); setAuthMode("signed-out"); };
+  const offline = () => {
+    try {
+      const migrated = migrateLegacyStorage(localStorage);
+      if (migrated) toast(`Recovered ${migrated} data set${migrated===1?"":"s"} from an older version`);
+    } catch (error) { toast(`Offline data migration stopped: ${error.message}`, "error"); return; }
+    ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setResidents(sg(KEYS.r, null) ?? SEED_RESIDENTS); setTxns(sg(KEYS.t, null) ?? buildSeedTxns()); setProjects(sg(KEYS.p, null) ?? SEED_PROJECTS); setContribs(sg(KEYS.c, null) ?? SEED_CONTRIBS); setReminders(sg(KEYS.rem, null) ?? SEED_REMINDERS); setProvider(sg(PROVIDER_KEY, null) ?? SEED_PROVIDER); setProviderPayments(sg(PROVIDER_PAYMENTS_KEY, null) ?? []); setLoaded(true); setAuthMode("offline"); if (!sg(KEYS.tour, false)) setTourStep(0);
+  };
+  const logout = () => { ss(AUTH_KEY, null); ss(REFRESH_KEY, null); setAuthToken(null); setAuthUser(null); setLoaded(false); setResidentMode(false); setTourStep(null); setAuthMode("signed-out"); };
 
   const tourNext = () => {
     const nx = tourStep + 1;
@@ -1552,6 +1997,10 @@ export default function App() {
   );
   if (authMode === "signed-out") return <AuthScreen onAuthenticated={authenticated} onOffline={offline}/>;
   if (!loaded) return <div style={{padding:"2rem",fontFamily:"system-ui"}}>Loading…</div>;
+  const residentAccount = authMode === "signed-in" && authUser?.role === "resident";
+  const readOnlyUser = authMode === "signed-in" && authUser?.role === "viewer";
+  const visibleNav = readOnlyUser ? NAV.filter(item=>["dashboard","reports","provider"].includes(item.id)) : NAV;
+  const visiblePage = readOnlyUser && !["dashboard","reports","provider"].includes(page) ? "dashboard" : page;
 
   return (
     <div className="app-shell" style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#f0f5f1",minHeight:"100vh",display:"flex"}}>
@@ -1574,27 +2023,29 @@ export default function App() {
           .app-sidebar nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 0.5rem !important; }
           .app-sidebar nav button { justify-content: center; margin: 0 !important; padding: 0.55rem 0.25rem !important; font-size: 0.72rem !important; }
           .app-sidebar > div:first-child { padding: 0.8rem 1rem !important; }
-          .app-sidebar > div:last-child { display: none; }
+          .app-sidebar > div:last-child { display: flex !important; align-items: center; gap: 0.5rem; padding: 0.5rem 1rem !important; }
+          .app-sidebar > div:last-child > button { display: block; flex: 1; min-width: 0; width: auto !important; margin-top: 0 !important; text-align: center !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          .app-sidebar > div:last-child > div { display: none; }
           .app-main main { padding: 1rem !important; }
           .app-main > div:first-child { position: static !important; }
         }
       `}</style>
 
       {/* Sidebar — hidden in Resident View */}
-      {!residentMode && <div className="app-sidebar no-print" style={{width:216,background:"#0d1f13",flexShrink:0,display:"flex",flexDirection:"column",minHeight:"100vh",position:"sticky",top:0,height:"100vh"}}>
+      {!residentMode && !residentAccount && <div className="app-sidebar no-print" style={{width:216,background:"#0d1f13",flexShrink:0,display:"flex",flexDirection:"column",minHeight:"100vh",position:"sticky",top:0,height:"100vh"}}>
         <div style={{padding:"1.35rem 1.2rem 0.9rem",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
           <div style={{fontWeight:900,fontSize:"0.94rem",color:"#fff",lineHeight:1.2}}>🏡 Lemayian Court</div>
           <div style={{fontSize:"0.67rem",color:"#6aaa7a",marginTop:"0.22rem",textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:800}}>Estate Manager</div>
         </div>
         <nav style={{flex:1,padding:"0.7rem 0.62rem",overflowY:"auto"}}>
-          {NAV.map(n => (
+          {visibleNav.map(n => (
             <button key={n.id} onClick={() => setPage(n.id)} style={{width:"100%",display:"flex",alignItems:"center",gap:"0.58rem",padding:"0.58rem 0.72rem",border:"none",borderRadius:9,cursor:"pointer",background:page===n.id?"rgba(106,170,122,0.17)":"transparent",color:page===n.id?"#7dca8c":"rgba(255,255,255,0.52)",fontSize:"0.83rem",fontWeight:page===n.id?800:500,marginBottom:"0.1rem",textAlign:"left",borderLeft:page===n.id?"3px solid #6aaa7a":"3px solid transparent",fontFamily:"inherit"}}>
               <Ico n={n.n} sz={15}/>{n.l}{n.id==="reminders" && residents.some(r => calcBal(r.id,txns)>0) && <span style={{marginLeft:"auto",background:"#c0392b",color:"#fff",borderRadius:99,padding:"1px 6px",fontSize:"0.65rem",fontWeight:900}}>{residents.filter(r => calcBal(r.id,txns)>0).length}</span>}
             </button>
           ))}
         </nav>
         <div style={{padding:"0.9rem 1.2rem",borderTop:"1px solid rgba(255,255,255,0.07)"}}>
-          <button onClick={() => { setTourStep(0); setPage(TOUR[0].page); }} style={{background:"rgba(106,170,122,0.13)",border:"1px solid rgba(106,170,122,0.28)",borderRadius:8,color:"#6aaa7a",fontSize:"0.74rem",fontWeight:800,padding:"0.42rem 0.72rem",cursor:"pointer",width:"100%",textAlign:"left",fontFamily:"inherit"}}>🎓 App Tour</button>
+          {!readOnlyUser && <button onClick={() => { setTourStep(0); setPage(TOUR[0].page); }} style={{background:"rgba(106,170,122,0.13)",border:"1px solid rgba(106,170,122,0.28)",borderRadius:8,color:"#6aaa7a",fontSize:"0.74rem",fontWeight:800,padding:"0.42rem 0.72rem",cursor:"pointer",width:"100%",textAlign:"left",fontFamily:"inherit"}}>🎓 App Tour</button>}
           {authMode === "signed-in" ? <button onClick={logout} style={{marginTop:"0.55rem",background:"transparent",border:"1px solid rgba(255,255,255,0.14)",borderRadius:8,color:"rgba(255,255,255,0.62)",fontSize:"0.7rem",padding:"0.4rem 0.72rem",cursor:"pointer",width:"100%",textAlign:"left",fontFamily:"inherit"}}>Sign out{authUser?.email ? ` · ${authUser.email}` : ""}</button> : <div style={{fontSize:"0.68rem",color:"#d9b35c",marginTop:"0.6rem"}}>Offline demo mode</div>}
           <div style={{fontSize:"0.63rem",color:"rgba(255,255,255,0.2)",marginTop:"0.65rem",textAlign:"center"}}>© 2025 Lemayian Court</div>
         </div>
@@ -1603,26 +2054,28 @@ export default function App() {
       {/* Main content */}
       <div className="app-main" style={{flex:1,minWidth:0,display:"flex",flexDirection:"column"}}>
         <div style={{background:"#fff",borderBottom:"1px solid #e2ece4",padding:"0.7rem 1.4rem",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
-          <div style={{fontWeight:800,color:"#0f2417",fontSize:"0.91rem"}}>{residentMode ? "Resident View" : NAV.find(n=>n.id===page)?.l}</div>
+          <div style={{fontWeight:800,color:"#0f2417",fontSize:"0.91rem"}}>{residentAccount ? "Resident Account" : residentMode ? "Resident View" : NAV.find(n=>n.id===visiblePage)?.l}</div>
           <div style={{...FL,gap:"0.7rem"}}>
             <div style={{fontSize:"0.77rem",color:"#8a9e91"}}>{new Date().toLocaleDateString("en-KE",{weekday:"short",year:"numeric",month:"short",day:"numeric"})}</div>
-            {residentMode
+            {residentAccount
+              ? <BTN v="sec" sz="sm" onClick={logout}>Sign out</BTN>
+              : residentMode
               ? <BTN v="sec" sz="sm" onClick={() => setResidentMode(false)}><Ico n="back" sz={13}/> Back to Admin</BTN>
-              : <BTN v="sec" sz="sm" onClick={() => { setResidentMode(true); setTourStep(null); }}><Ico n="user" sz={13}/> Resident View 👤</BTN>}
+              : !readOnlyUser ? <BTN v="sec" sz="sm" onClick={() => { setResidentMode(true); setTourStep(null); }}><Ico n="user" sz={13}/> Resident View 👤</BTN> : null}
           </div>
         </div>
         <main style={{flex:1,padding:"1.4rem",maxWidth:920,width:"100%"}}>
-          {residentMode
-            ? <ResidentView residents={residents} transactions={txns} provider={provider} onBack={() => setResidentMode(false)}/>
+              {residentAccount || residentMode
+            ? <ResidentView residents={residents} transactions={txns} provider={provider} authMode={authMode} residentId={residentAccount ? authUser.residentId : undefined} onBack={() => setResidentMode(false)}/>
             : <>
-                {page==="dashboard" && <Dashboard residents={residents} transactions={txns} setPage={setPage} provider={provider}/>}
-          {page==="residents" && <Residents residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} contribs={contribs} setContribs={setContribs} toast={toast}/>}
-          {page==="payments"  && <Payments  residents={residents} transactions={txns} setTransactions={setTxns} toast={toast}/>}
-          {page==="projects"  && <Projects  projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} residents={residents} toast={toast}/>}
-          {page==="reminders" && <Reminders residents={residents} reminders={reminders} setReminders={setReminders} transactions={txns} toast={toast}/>}
-          {page==="reports"   && <Reports   residents={residents} transactions={txns}/>}
-          {page==="provider"  && <Provider  provider={provider} setProvider={setProvider} toast={toast}/>}
-          {page==="settings"  && <Settings  residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} reminders={reminders} setReminders={setReminders} setProvider={setProvider} toast={toast}/>}
+                {visiblePage==="dashboard" && <Dashboard residents={residents} transactions={txns} setPage={setPage} provider={provider} canManage={!readOnlyUser}/>}
+              {visiblePage==="residents" && <Residents residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} contribs={contribs} setContribs={setContribs} authMode={authMode} authToken={authToken} authUser={authUser} toast={toast}/>}
+              {visiblePage==="payments"  && <Payments  residents={residents} transactions={txns} setTransactions={setTxns} toast={toast}/>}
+              {visiblePage==="projects"  && <Projects  projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} residents={residents} toast={toast}/>}
+              {visiblePage==="reminders" && <Reminders residents={residents} reminders={reminders} setReminders={setReminders} transactions={txns} toast={toast}/>}
+              {visiblePage==="reports"   && <Reports residents={residents} transactions={txns} provider={provider} providerPayments={providerPayments}/>}
+              {visiblePage==="provider"  && <Provider provider={provider} setProvider={setProvider} payments={providerPayments} setPayments={setProviderPayments} authMode={authMode} authToken={authToken} authUser={authUser} toast={toast}/>}
+              {visiblePage==="settings"  && <Settings residents={residents} setResidents={setResidents} transactions={txns} setTransactions={setTxns} projects={projects} setProjects={setProjects} contribs={contribs} setContribs={setContribs} reminders={reminders} setReminders={setReminders} provider={provider} setProvider={setProvider} providerPayments={providerPayments} setProviderPayments={setProviderPayments} toast={toast}/>}
               </>}
         </main>
       </div>
@@ -1633,5 +2086,7 @@ export default function App() {
   );
 }
 
-export { buildSeedTxns, calcBal, hasDuplicateCharge, isValidBackup, removeResidentData };
+export { buildSeedTxns, calcBal, hasDuplicateCharge, isValidBackup, removeResidentData, reconcile,
+         runningBalance, workbookYearBreaks, affectsBalance, SEED_CONTRIBS, SEED_REMINDERS, WORKBOOK_GATEHOUSE_ITEMS, WORKBOOK_PAYMENT_REFERENCES,
+         WORKBOOK_CLOSING, WORKBOOK_OPENING_2026, REQUESTED_OPENING_2026, WORKBOOK_GATEHOUSE, normaliseKenyanPhone, waLink, migrateLegacyStorage, reminderSchedule };
 

@@ -17,6 +17,7 @@
     "server": "node server/index.js",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:server": "node --test server/security.test.cjs",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
